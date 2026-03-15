@@ -33,35 +33,35 @@ export async function GET() {
         ORDER BY created_count DESC
       `),
 
-      // 2. Sankey Flow – videos raw table (with client_id for filtering)
+      // 2. Sankey Flow – videos joined with channels for channel_name
       client.query<{
         client_id: string;
         source: string;
         target: string;
         value: number;
       }>(`
-        SELECT client_id,
-               input_type_name AS source,
-               channel_name AS target,
+        SELECT v.client_id,
+               v.input_type_name AS source,
+               c.channel_name AS target,
                COUNT(*)::int AS value
-        FROM videos
-        WHERE input_type_name IS NOT NULL
-          AND channel_name IS NOT NULL
-          AND client_id IS NOT NULL
-        GROUP BY client_id, input_type_name, channel_name
+        FROM videos v
+        JOIN channels c ON c.client_id = v.client_id AND c.channel_id = v.channel_id
+        WHERE v.input_type_name IS NOT NULL
+          AND c.channel_name IS NOT NULL
+        GROUP BY v.client_id, v.input_type_name, c.channel_name
         HAVING COUNT(*) > 0
 
         UNION ALL
 
-        SELECT client_id,
-               channel_name AS source,
-               output_type_name AS target,
+        SELECT v.client_id,
+               c.channel_name AS source,
+               v.output_type_name AS target,
                COUNT(*)::int AS value
-        FROM videos
-        WHERE channel_name IS NOT NULL
-          AND output_type_name IS NOT NULL
-          AND client_id IS NOT NULL
-        GROUP BY client_id, channel_name, output_type_name
+        FROM videos v
+        JOIN channels c ON c.client_id = v.client_id AND c.channel_id = v.channel_id
+        WHERE c.channel_name IS NOT NULL
+          AND v.output_type_name IS NOT NULL
+        GROUP BY v.client_id, c.channel_name, v.output_type_name
         HAVING COUNT(*) > 0
 
         ORDER BY value DESC

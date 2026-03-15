@@ -9,15 +9,17 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "chart.js": "^4.5.1",
     "next": "16.1.6",
     "pg": "^8.13.0",
     "react": "19.2.3",
+    "react-chartjs-2": "^5.3.1",
     "react-dom": "19.2.3"
   },
   "devDependencies": {
-    "@types/pg": "^8.11.6",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.11.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

@@ -1,5 +1,7 @@
 import { pool } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const client = await pool.connect();
   try {
@@ -177,12 +179,22 @@ export async function GET() {
       client.query<{
         client_id: string;
         language: string;
+        uploaded_hours: number;
         created_hours: number;
+        published_hours: number;
+        uploaded_count: number;
+        created_count: number;
         published_count: number;
       }>(`
         SELECT client_id, language,
+          ROUND(SUM(CASE WHEN uploaded_duration_hh_mm_ss IS NOT NULL AND TRIM(COALESCE(uploaded_duration_hh_mm_ss::text, '')) != ''
+            THEN EXTRACT(EPOCH FROM (uploaded_duration_hh_mm_ss::text::interval)) ELSE 0 END)/3600, 1)::numeric AS uploaded_hours,
           ROUND(SUM(CASE WHEN created_duration_hh_mm_ss IS NOT NULL AND TRIM(COALESCE(created_duration_hh_mm_ss::text, '')) != ''
             THEN EXTRACT(EPOCH FROM (created_duration_hh_mm_ss::text::interval)) ELSE 0 END)/3600, 1)::numeric AS created_hours,
+          ROUND(SUM(CASE WHEN published_duration_hh_mm_ss IS NOT NULL AND TRIM(COALESCE(published_duration_hh_mm_ss::text, '')) != ''
+            THEN EXTRACT(EPOCH FROM (published_duration_hh_mm_ss::text::interval)) ELSE 0 END)/3600, 1)::numeric AS published_hours,
+          SUM(uploaded_count)::int AS uploaded_count,
+          SUM(created_count)::int AS created_count,
           SUM(published_count)::int AS published_count
         FROM language_processing_summary
         GROUP BY client_id, language ORDER BY client_id, created_hours DESC
@@ -298,14 +310,39 @@ export async function GET() {
 
     // Language matrix
     const languages = new Set<string>();
-    const langMatrix: Record<string, Record<string, { hours: number; published: number }>> = {};
+    const langMatrix: Record<
+      string,
+      Record<
+        string,
+        {
+          uploadedHours: number;
+          processingHours: number;
+          publishedHours: number;
+          uploadedCount: number;
+          processingCount: number;
+          publishedCount: number;
+          // Legacy compatibility keys for older UI payload readers
+          hours: number;
+          published: number;
+        }
+      >
+    > = {};
     for (const r of languageByClientRes.rows) {
       languages.add(r.language);
       if (!langMatrix[r.client_id]) langMatrix[r.client_id] = {};
-      langMatrix[r.client_id][r.language] = { hours: Number(r.created_hours), published: Number(r.published_count) };
+      langMatrix[r.client_id][r.language] = {
+        uploadedHours: Number(r.uploaded_hours),
+        processingHours: Number(r.created_hours),
+        publishedHours: Number(r.published_hours),
+        uploadedCount: Number(r.uploaded_count),
+        processingCount: Number(r.created_count),
+        publishedCount: Number(r.published_count),
+        hours: Number(r.created_hours),
+        published: Number(r.published_count),
+      };
     }
 
-    return Response.json({
+    const responsePayload = {
       kpis: {
         totalCreatedHours: Number(dur.total_created_hours),
         totalPublishedHours: Number(dur.total_published_hours),
@@ -313,38 +350,75 @@ export async function GET() {
         totalVideos: Number(cnt.total_videos),
         totalPublished: Number(cnt.total_published),
         totalClients: Number(cnt.total_clients),
-        dataQualityPct, avgFeatureTypes: Number(fp.avg_types),
-        maxFeatureTypes: Number(fp.max_possible), publishEfficiencyHrs, atRiskCount,
+        dataQualityPct,
+        avgFeatureTypes: Number(fp.avg_types),
+        maxFeatureTypes: Number(fp.max_possible),
+        publishEfficiencyHrs,
+        atRiskCount,
       },
       dataQuality: {
-        total: Number(dq.total), missingInputType: Number(dq.missing_input_type),
-        missingLanguage: Number(dq.missing_language), publishedNoPlatform: Number(dq.published_no_platform),
+        total: Number(dq.total),
+        missingInputType: Number(dq.missing_input_type),
+        missingLanguage: Number(dq.missing_language),
+        publishedNoPlatform: Number(dq.published_no_platform),
         publishedNoUrl: Number(dq.published_no_url),
       },
-      monthlyContribution, clientIds: Array.from(clientIds).sort(),
+      monthlyContribution,
+      clientIds: Array.from(clientIds).sort(),
       clientShare: clientShareRes.rows.map((r) => ({
-        client_id: r.client_id, createdHours: Number(r.created_hours),
-        publishedHours: Number(r.published_hours), uploadedHours: Number(r.uploaded_hours),
+        client_id: r.client_id,
+        createdHours: Number(r.created_hours),
+        publishedHours: Number(r.published_hours),
+        uploadedHours: Number(r.uploaded_hours),
       })),
-      featureMatrix: { clients: Object.keys(featureMatrix).sort(), outputTypes: Array.from(outputTypes).sort(), data: featureMatrix },
+      featureMatrix: {
+        clients: Object.keys(featureMatrix).sort(),
+        outputTypes: Array.from(outputTypes).sort(),
+        data: featureMatrix,
+      },
       amplification: amplificationRes.rows.map((r) => ({
-        client_id: r.client_id, uploaded: Number(r.uploaded), created: Number(r.created),
-        published: Number(r.published), amplification: Number(r.amplification),
+        client_id: r.client_id,
+        uploaded: Number(r.uploaded),
+        created: Number(r.created),
+        published: Number(r.published),
+        amplification: Number(r.amplification),
       })),
-      platformHours: platformHoursRes.rows.map((r) => ({ platform: r.platform, hours: Number(r.hours) })).filter((r) => r.hours > 0).sort((a, b) => b.hours - a.hours),
-      languageMatrix: { clients: Object.keys(langMatrix).sort(), languages: Array.from(languages).sort(), data: langMatrix },
+      platformHours: platformHoursRes.rows
+        .map((r) => ({ platform: r.platform, hours: Number(r.hours) }))
+        .filter((r) => r.hours > 0)
+        .sort((a, b) => b.hours - a.hours),
+      languageMatrix: {
+        clients: Object.keys(langMatrix).sort(),
+        languages: Array.from(languages).sort(),
+        data: langMatrix,
+      },
       riskTable: riskTableRes.rows.map((r) => ({
-        client_id: r.client_id, totalVideos: Number(r.total_videos), unknownInput: Number(r.unknown_input),
-        pubNoPlatform: Number(r.pub_no_platform), pubNoUrl: Number(r.pub_no_url),
-        totalCreated: Number(r.total_created), totalPublished: Number(r.total_published),
-        outputTypesUsed: Number(r.output_types_used), totalOutputTypes: Number(r.total_output_types),
+        client_id: r.client_id,
+        totalVideos: Number(r.total_videos),
+        unknownInput: Number(r.unknown_input),
+        pubNoPlatform: Number(r.pub_no_platform),
+        pubNoUrl: Number(r.pub_no_url),
+        totalCreated: Number(r.total_created),
+        totalPublished: Number(r.total_published),
+        outputTypesUsed: Number(r.output_types_used),
+        totalOutputTypes: Number(r.total_output_types),
         createdHours: Number(r.created_hours),
       })),
       videoExplorer: videosRes.rows.map((r) => ({
-        video_id: Number(r.video_id), client_id: r.client_id, channel_name: r.channel_name,
-        user_name: r.user_name, output_type_name: r.output_type_name,
-        published_platform: r.published_platform, published_url: r.published_url,
+        video_id: Number(r.video_id),
+        client_id: r.client_id,
+        channel_name: r.channel_name,
+        user_name: r.user_name,
+        output_type_name: r.output_type_name,
+        published_platform: r.published_platform,
+        published_url: r.published_url,
       })),
+    };
+
+    return Response.json(responsePayload, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      },
     });
   } catch (err) {
     console.error("Page4 API failed", err);

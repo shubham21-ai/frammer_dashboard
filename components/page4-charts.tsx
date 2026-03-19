@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { DefinitionButton } from "@/components/ui/DefinitionButton";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -18,7 +18,24 @@ export type Page4KPIs = {
 export type DataQuality = { total: number; missingInputType: number; missingLanguage: number; publishedNoPlatform: number; publishedNoUrl: number };
 export type ClientShare = { client_id: string; createdHours: number; publishedHours: number; uploadedHours: number };
 export type FeatureMatrix = { clients: string[]; outputTypes: string[]; data: Record<string, Record<string, { created: number; published: number }>> };
-export type LanguageMatrix = { clients: string[]; languages: string[]; data: Record<string, Record<string, { hours: number; published: number }>> };
+export type LanguageMatrix = {
+  clients: string[];
+  languages: string[];
+  data: Record<
+    string,
+    Record<
+      string,
+      {
+        uploadedHours: number;
+        processingHours: number;
+        publishedHours: number;
+        uploadedCount: number;
+        processingCount: number;
+        publishedCount: number;
+      }
+    >
+  >;
+};
 export type AmplificationRow = { client_id: string; uploaded: number; created: number; published: number; amplification: number };
 export type PlatformHoursRow = { platform: string; hours: number };
 export type RiskRow = { client_id: string; totalVideos: number; unknownInput: number; pubNoPlatform: number; pubNoUrl: number; totalCreated: number; totalPublished: number; outputTypesUsed: number; totalOutputTypes: number; createdHours: number };
@@ -263,15 +280,53 @@ export function PlatformHoursChart({ data }: { data: PlatformHoursRow[] }) {
    ================================================================ */
 
 export function LanguageHeatmap({ matrix }: { matrix: LanguageMatrix }) {
-  const [metric, setMetric] = useState<"hours" | "published">("hours");
+  const [metric, setMetric] = useState<
+    | "processingHours"
+    | "uploadedHours"
+    | "publishedHours"
+    | "processingCount"
+    | "uploadedCount"
+    | "publishedCount"
+  >("processingHours");
+
+  const getLanguageMetricValue = useCallback(
+    (clientId: string, language: string): number => {
+    const cell = matrix.data[clientId]?.[language] as
+      | (LanguageMatrix["data"][string][string] & {
+          hours?: number;
+          published?: number;
+        })
+      | undefined;
+    if (!cell) return 0;
+
+    switch (metric) {
+      case "processingHours":
+        return Number(cell.processingHours ?? cell.hours ?? 0);
+      case "uploadedHours":
+        return Number(cell.uploadedHours ?? 0);
+      case "publishedHours":
+        return Number(cell.publishedHours ?? 0);
+      case "processingCount":
+        return Number(cell.processingCount ?? 0);
+      case "uploadedCount":
+        return Number(cell.uploadedCount ?? 0);
+      case "publishedCount":
+        return Number(cell.publishedCount ?? cell.published ?? 0);
+      default:
+        return 0;
+    }
+    },
+    [matrix, metric]
+  );
+
   const maxVal = useMemo(() => {
     let mx = 0;
     for (const cid of matrix.clients) for (const lang of matrix.languages) {
-      const v = matrix.data[cid]?.[lang]?.[metric] ?? 0;
+      const v = getLanguageMetricValue(cid, lang);
       if (v > mx) mx = v;
     }
     return mx || 1;
-  }, [matrix, metric]);
+  }, [matrix, metric, getLanguageMetricValue]);
 
   function cellColor(val: number) {
     if (val === 0) return "bg-gray-50 text-gray-300";
@@ -290,12 +345,16 @@ export function LanguageHeatmap({ matrix }: { matrix: LanguageMatrix }) {
             <h3 className="text-sm font-bold text-gray-900">Language Coverage by Client</h3>
             <p className="text-[11px] text-gray-400 mt-0.5">Which languages each account processes</p>
           </div>
-          <DefinitionButton definition="Heatmap of processing hours or published count by client and language. Shows which languages each account uses." />
+          <DefinitionButton definition="Heatmap of uploaded, processing, and published metrics (hours/counts) by client and language. Shows language activity depth per account." />
         </div>
-        <select value={metric} onChange={(e) => setMetric(e.target.value as "hours" | "published")}
+        <select value={metric} onChange={(e) => setMetric(e.target.value as typeof metric)}
           className="text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:border-red-400">
-          <option value="hours">Processing Hours</option>
-          <option value="published">Published Count</option>
+          <option value="processingHours">Processing Hours</option>
+          <option value="uploadedHours">Uploaded Hours</option>
+          <option value="publishedHours">Published Hours</option>
+          <option value="processingCount">Processing Count</option>
+          <option value="uploadedCount">Uploaded Count</option>
+          <option value="publishedCount">Published Count</option>
         </select>
       </div>
       <div className="flex-1 overflow-auto p-3">
@@ -311,8 +370,9 @@ export function LanguageHeatmap({ matrix }: { matrix: LanguageMatrix }) {
               <tr key={cid}>
                 <td className="text-[11px] font-semibold text-gray-700 px-2 py-1.5 text-left sticky left-0 bg-white">{cid}</td>
                 {matrix.languages.map((lang) => {
-                  const val = matrix.data[cid]?.[lang]?.[metric] ?? 0;
-                  return <td key={lang} className="px-1 py-1"><div className={`rounded-md px-2 py-1.5 text-[10px] font-bold ${cellColor(val)}`}>{val > 0 ? (metric === "hours" ? `${val}h` : val.toLocaleString()) : "—"}</div></td>;
+                  const val = getLanguageMetricValue(cid, lang);
+                  const isHours = metric.includes("Hours");
+                  return <td key={lang} className="px-1 py-1"><div className={`rounded-md px-2 py-1.5 text-[10px] font-bold ${cellColor(val)}`}>{val > 0 ? (isHours ? `${val}h` : val.toLocaleString()) : "—"}</div></td>;
                 })}
               </tr>
             ))}

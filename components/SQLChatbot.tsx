@@ -124,6 +124,7 @@ export default function SQLChatbot({
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const revealTimersRef = useRef<number[]>([]);
 
   const active = sessions.find((s) => s.id === activeId) ?? sessions[0];
 
@@ -134,6 +135,27 @@ export default function SQLChatbot({
   useEffect(() => {
     scrollToBottom();
   }, [active?.messages, scrollToBottom]);
+
+  useEffect(() => {
+    return () => {
+      revealTimersRef.current.forEach((t) => window.clearTimeout(t));
+      revealTimersRef.current = [];
+    };
+  }, []);
+
+  const updateAssistantMessage = useCallback(
+    (messageId: string, patch: Partial<ChatMessage>) => {
+      setSessions((prev) =>
+        prev.map((s) => ({
+          ...s,
+          messages: s.messages.map((m) =>
+            m.id === messageId ? { ...m, ...patch } : m
+          ),
+        }))
+      );
+    },
+    []
+  );
 
   const sendMessage = useCallback(async () => {
     const q = input.trim();
@@ -168,24 +190,67 @@ export default function SQLChatbot({
       });
       const data = await res.json();
 
+      const assistantMsgId = crypto.randomUUID();
       const assistantMsg: ChatMessage = {
-        id: crypto.randomUUID(),
+        id: assistantMsgId,
         role: "assistant",
         question: q,
-        sql_query: data.sql_query,
-        table_data: data.table_data,
-        chart_spec: data.chart_spec,
-        insights: data.insights,
-        error: data.error,
+        insights: [],
       };
 
       setSessions((prev) =>
         prev.map((s) =>
-          s.id === activeId
-            ? { ...s, messages: [...s.messages, assistantMsg] }
-            : s
+          s.id === activeId ? { ...s, messages: [...s.messages, assistantMsg] } : s
         )
       );
+
+      if (data.error) {
+        updateAssistantMessage(assistantMsgId, { error: data.error });
+      } else {
+        const insights = Array.isArray(data.insights) ? data.insights : [];
+        const sqlQuery =
+          typeof data.sql_query === "string" ? data.sql_query : "";
+        const chartSpec =
+          data.chart_spec && typeof data.chart_spec === "object"
+            ? (data.chart_spec as Record<string, unknown>)
+            : {};
+        const tableData = Array.isArray(data.table_data)
+          ? (data.table_data as Record<string, unknown>[])
+          : [];
+
+        let delay = 120;
+
+        // Reveal insights one-by-one
+        insights.forEach((insight: string, idx: number) => {
+          const t = window.setTimeout(() => {
+            updateAssistantMessage(assistantMsgId, {
+              insights: insights.slice(0, idx + 1),
+            });
+          }, delay);
+          revealTimersRef.current.push(t);
+          delay += 260;
+        });
+
+        // Then reveal SQL block
+        if (sqlQuery) {
+          const t = window.setTimeout(() => {
+            updateAssistantMessage(assistantMsgId, { sql_query: sqlQuery });
+          }, delay);
+          revealTimersRef.current.push(t);
+          delay += 220;
+        }
+
+        // Then reveal chart/table preview payload
+        if (Object.keys(chartSpec).length > 0 || tableData.length > 0) {
+          const t = window.setTimeout(() => {
+            updateAssistantMessage(assistantMsgId, {
+              chart_spec: chartSpec,
+              table_data: tableData,
+            });
+          }, delay);
+          revealTimersRef.current.push(t);
+        }
+      }
     } catch (err) {
       const assistantMsg: ChatMessage = {
         id: crypto.randomUUID(),
@@ -203,7 +268,7 @@ export default function SQLChatbot({
     } finally {
       setLoading(false);
     }
-  }, [input, loading, activeId, active.messages]);
+  }, [input, loading, activeId, updateAssistantMessage]);
 
   const addChat = useCallback(() => {
     const id = crypto.randomUUID();

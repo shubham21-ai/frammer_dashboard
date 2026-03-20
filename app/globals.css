@@ -57,3 +57,28 @@ body {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(400%); }
 }
+
+/* ── Print / PDF Export ──────────────────────────────────────────────────── */
+@media print {
+  header,
+  .global-filter-bar,
+  [data-chatpanel],
+  button[title="Export as PDF"],
+  button[title="Open AI assistant"],
+  button[title="Metric Dictionary"] {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+  }
+  main {
+    padding: 0 !important;
+  }
+  .rounded-xl, .rounded-2xl {
+    border-radius: 0 !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

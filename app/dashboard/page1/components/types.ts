@@ -50,6 +50,24 @@ export interface Page1KPIs {
 
   prevMonthLabel?: string;
   currentMonthLabel?: string;
+
+  // Year-over-Year comparison fields
+  yoyMonthLabel?: string;
+  humanHoursYoYTrendPct?: number;
+  humanHoursYoYFormatted?: string;
+  timeToMarketYoYTrendPct?: number;
+  timeToMarketYoYHours?: number;
+  contentWasteYoYTrendPct?: number;
+  contentWasteYoYFormatted?: string;
+  clientConcentrationYoYTrendPct?: number;
+  clientConcentrationYoYPct?: number;
+  totalUploadedYoYTrendPct?: number;
+  yoyUploaded?: number;
+  totalCreatedYoYTrendPct?: number;
+  yoyCreated?: number;
+  aiMultiplierYoYTrendPct?: number;
+  yoyMultiplier?: number;
+  yoyTopOutput?: string;
 }
 
 export interface LifecycleTrendData {
@@ -91,6 +109,13 @@ export interface FeatureMatrix {
   data: Record<string, Record<string, { created: number; published: number }>>;
 }
 
+export interface Page1Alert {
+  type: "inactive" | "volume_drop";
+  clientId: string;
+  message: string;
+  severity: "warning" | "critical";
+}
+
 export interface Page1Data {
   kpis: Page1KPIs;
   lifecycleTrend: LifecycleTrendData;
@@ -100,4 +125,5 @@ export interface Page1Data {
   topFormatsOutputTypes: string[];
   featureMatrix: FeatureMatrix;
   dataHealthAlerts: DataHealthAlert[];
+  alerts: Page1Alert[];
 }

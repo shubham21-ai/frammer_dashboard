@@ -46,14 +46,28 @@ export default function TrendChart({ data, monthlyByClient }: TrendChartProps) {
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
   const [drillClient, setDrillClient] = useState<string | null>(null);
 
-  const labels = data.map((d) => d.month);
-
   const drillDownRows = useMemo(() => {
     if (!selectedMonth) return [];
     return monthlyByClient
       .filter((r) => r.month === selectedMonth)
       .sort((a, b) => b.processed - a.processed);
   }, [selectedMonth, monthlyByClient]);
+
+  // Empty state — after all hooks
+  if (data.length === 0) {
+    return (
+      <div className="rounded-xl border border-gray-100 bg-gray-50/50 p-4">
+        <h4 className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-3">
+          Uploaded vs Processed vs Published Over Time
+        </h4>
+        <div className="h-[170px] flex items-center justify-center">
+          <p className="text-xs text-gray-400">No data for the selected period</p>
+        </div>
+      </div>
+    );
+  }
+
+  const labels = data.map((d) => d.month);
 
   const datasets = lineConfigs.map((cfg, i) => ({
     label: cfg.label,

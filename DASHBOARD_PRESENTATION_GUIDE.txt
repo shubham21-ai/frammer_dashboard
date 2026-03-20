@@ -1,0 +1,1182 @@
+================================================================================
+  FRAMMER AI ANALYTICS DASHBOARD — COMPLETE FEATURE DOCUMENTATION
+  For Internal Use & Presentation Preparation
+  Problem Statement: PS-2 | Frammer AI Pvt Limited
+================================================================================
+
+TABLE OF CONTENTS
+-----------------
+1. Executive Summary
+2. Architecture Overview
+3. PAGE 1 — CEO Dashboard / Executive Vital Signs
+4. PAGE 2 — Analysis & Funnel
+5. PAGE 3 — Channels / Operational Efficiency
+6. PAGE 4 — Content Mix / Strategic Growth Hub
+7. PAGE 5 — Data Explorer (Tables + Quality)
+8. PAGE 6 — Custom Widgets (AI-Powered Builder)
+9. AI Data Chat (Global Feature)
+10. Reusable UI Components
+11. Data Model & Backend
+12. What Has Been Addressed From the Problem Statement
+13. ESSENTIAL THINGS TO ADD BEFORE PRESENTATION
+14. Presentation Story Flow (Suggested)
+15. Judging Criteria Mapping
+
+================================================================================
+1. EXECUTIVE SUMMARY
+================================================================================
+
+Frammer AI Analytics Dashboard is a 6-page, fully browser-based, modular analytics
+platform built in Next.js 15 (App Router) with TypeScript. It connects to a live
+PostgreSQL database using a star schema data model.
+
+The dashboard serves multiple personas:
+  - Founders/Leadership   → Page 1 (Executive view)
+  - Client Success        → Page 3 (Channel/client drill-downs)
+  - Operations Teams      → Page 4 (Platform efficiency, velocity)
+  - Editorial/Production  → Page 4 (Content flow, output mix)
+  - Tech/Product          → Page 5 (Data explorer, raw tables)
+  - Any stakeholder       → AI Chat (natural language queries)
+  - Power users           → Page 6 (Custom widget builder)
+
+Key differentiators over the baseline dashboard:
+  - Multi-level drill-downs (L1 → L2 → L3 → raw records)
+  - AI-powered natural language querying (Gemini + LangChain + RAG)
+  - Prompt-driven custom KPI/chart builder (Page 6)
+  - Inline insight definitions on every widget
+  - Data health monitoring
+  - Fully modular — new metrics/dimensions require zero redesign
+
+================================================================================
+2. ARCHITECTURE OVERVIEW
+================================================================================
+
+Frontend:
+  - Next.js 15 App Router (React, TypeScript)
+  - Tailwind CSS for styling
+  - Recharts (bar, line, area, scatter, sankey, heatmap)
+  - Chart.js via react-chartjs-2 (line, doughnut charts on pages 1 & 2)
+
+Backend / API:
+  - Next.js API Routes (app/api/**)
+  - PostgreSQL database (via pg pool)
+  - 10+ dedicated API routes per page
+  - /api/drilldown  → raw video records with multi-filter support
+  - /api/insights   → widget-level insight generation
+  - /api/chat       → AI conversational SQL queries
+  - /api/page6/*    → custom widget generation & persistence
+
+AI / LLM Layer:
+  - Google Generative AI SDK (@google/generative-ai)
+  - LangChain + ChatGoogleGenerativeAI (Gemini models)
+  - RAG (Retrieval Augmented Generation) for semantic context
+  - Model: gemini-2.5-flash for widget builder; gemini-3-flash for chat agent
+
+Data Model (Star Schema):
+  Fact Table: videos
+    - video_id, client_id, channel_id, user_id
+    - input_type_name, output_type_name, language_name
+    - published_platform, published_flag, published_url
+    - uploaded_at, processed_at, published_at
+    - duration (interval/numeric), headline
+
+  Summary/Aggregate Tables:
+    - monthly_processing_summary (month × client: uploaded, processed, published counts)
+    - monthly_duration_summary (month × client: uploaded, created, published duration)
+    - channel_processing_summary (channel × client: counts + durations + publish rate)
+    - channel_user_processing_summary (channel × user: counts)
+    - channel_wise_publishing_counts (channel: published count)
+    - channel_wise_publishing_duration (channel: published duration)
+    - input_type_processing_summary (input_type: counts)
+    - output_type_processing_summary (output_type: counts)
+    - language_processing_summary (language: counts)
+    - user_processing_summary (user: counts)
+    - custom_widgets (id, title, prompt, sql_query, widget_type, config, created_at)
+
+================================================================================
+3. PAGE 1 — CEO DASHBOARD / EXECUTIVE VITAL SIGNS
+================================================================================
+
+URL: /dashboard/page1
+Label in Nav: "Overview"
+Target Persona: Founders, Leadership, Client Success Directors
+
+──────────────────────────────────────────────────────────────────────────────
+3.1 KPI CARDS GRID (9 Business-Intelligence KPIs)
+──────────────────────────────────────────────────────────────────────────────
+
+Each card shows:
+  - Primary value (latest month)
+  - All-time total (secondary line)
+  - MoM change percentage + direction arrow
+  - "?" definition button (popover)
+  - "Insight" button (loads AI-generated insight)
+
+KPI 1: Est. Human Hours Saved
+  Formula : SUM(total_uploaded_duration) × 3
+  Unit    : Hours
+  Logic   : 1h raw content → 3h manual editing equivalent eliminated
+  Context : Measures AI ROI / value delivered
+
+KPI 2: Time-to-Market / Production Velocity
+  Formula : AVG(published_at − uploaded_at)
+  Unit    : Hours
+  Logic   : Lower = faster production pipeline
+  Context : Key SLA metric for editorial teams
+
+KPI 3: Content Waste Index
+  Formula : total_created_duration − total_published_duration
+  Unit    : Hours
+  Logic   : AI-generated content that was NEVER published
+  Context : Identifies wasted processing cost; should trend down
+
+KPI 4: Client Concentration Risk
+  Formula : (top_client_duration / total_duration) × 100
+  Unit    : %
+  Logic   : If one client = 60%+, that is a revenue concentration risk
+  Context : Business health / diversity metric
+
+KPI 5: Total Uploaded Volume
+  Formula : COUNT(videos WHERE uploaded_at IS NOT NULL), SUM(duration)
+  Unit    : Videos (count) + Hours
+  Logic   : Total raw content entering the pipeline
+
+KPI 6: Total AI-Generated Output
+  Formula : COUNT(videos WHERE processed_at IS NOT NULL), SUM(duration)
+  Unit    : Videos (count) + Hours
+  Logic   : Total AI-processed outputs across all clients
+
+KPI 7: AI Content Multiplier
+  Formula : total_created / total_uploaded
+  Unit    : Multiple (e.g., "8x")
+  Logic   : For every 1 upload, how many AI outputs are generated
+  Context : Measures AI amplification power
+
+KPI 8: Period-over-Period Growth (Δ%)
+  Formula : (current_month_combined − prev_month_combined) / prev_month_combined × 100
+  Unit    : %
+  Logic   : MoM growth across uploaded + published volume
+
+KPI 9: Top Performing Output Type
+  Formula : output_type with MAX(published count) in current month
+  Unit    : Label + count
+  Logic   : Which content format is driving the most publishing activity
+
+──────────────────────────────────────────────────────────────────────────────
+3.2 INTERACTIVE LIFECYCLE TREND CHART
+──────────────────────────────────────────────────────────────────────────────
+
+Type   : Multi-line trend chart (Chart.js Line)
+Source : monthly_processing_summary + monthly_duration_summary
+
+Axes:
+  X : Month (chronological, e.g., "Jan, 2025")
+  Y : Upload Count OR Upload Duration (hours) — toggle button
+
+Lines:
+  - One colored line per client
+  - First 5 clients pre-selected by default
+  - Each client has a colored checkbox toggle
+
+Interaction — Drill-Down (click any month point):
+  - Panel opens below chart
+  - Shows all selected clients ranked by that month's metric
+  - Value + % of total for that month shown per client
+  - Close button dismisses
+
+Definition & Insight buttons on header.
+
+──────────────────────────────────────────────────────────────────────────────
+3.3 PIPELINE STATS (3 Metric Cards with Sparklines)
+──────────────────────────────────────────────────────────────────────────────
+
+Card 1: Total Uploaded Count  → Sum of all monthly uploads
+Card 2: Total Processed Count → Sum of all monthly processed
+Card 3: Total Published Count → Sum of all monthly published
+
+Each card shows:
+  - Big number (localized)
+  - Mini sparkline (monthly trend, 12 points)
+  - Clickable → navigates to Page 2
+
+──────────────────────────────────────────────────────────────────────────────
+3.4 DATA HEALTH ALERT BOARD
+──────────────────────────────────────────────────────────────────────────────
+
+Type    : Table showing published videos with incomplete metadata
+Source  : videos WHERE published_flag = true AND (platform IS NULL OR user IS NULL)
+
+Columns:
+  - Video ID (monospace)
+  - Headline (truncated)
+  - Platform (or "Missing")
+  - User (or "Missing")
+  - Issue badge: "Missing platform" / "Missing user" / "Missing both"
+
+Shows up to 50 alerts. Excess count shown as "... + N more".
+Red-tinted rows for visual urgency.
+Definition & Insight buttons.
+
+──────────────────────────────────────────────────────────────────────────────
+3.5 TOP PERFORMING FORMATS (100% Stacked Bar)
+──────────────────────────────────────────────────────────────────────────────
+
+Type   : 100% Stacked Bar (Recharts)
+Source : output_type_processing_summary grouped by month
+
+X-axis : Month
+Y-axis : Percentage (0–100%)
+Stacks : One color per output type (Shorts, Reels, Summary, Chapters, etc.)
+
+Shows format mix over time — highlights trending / declining formats.
+Consistent color per output type across months.
+Legend identifies each type.
+
+================================================================================
+4. PAGE 2 — ANALYSIS & FUNNEL
+================================================================================
+
+URL: /dashboard/page2
+Label in Nav: "Analysis & Funnel"
+Target Persona: Client Success, Operations, Analytics Team
+
+──────────────────────────────────────────────────────────────────────────────
+4.1 FUNNEL KPIs BAR
+──────────────────────────────────────────────────────────────────────────────
+
+3 funnel metrics displayed horizontally:
+  - Uploaded   : Total count
+  - Processed  : Total count + process rate %
+  - Published  : Total count + publish rate %
+
+Publish Rate = Published / Processed × 100
+Process Rate = Processed / Uploaded × 100
+
+Color-coded badges (green = good, red = concern).
+Definition & Insight buttons.
+
+──────────────────────────────────────────────────────────────────────────────
+4.2 MULTI-DIMENSION DONUT CHARTS
+──────────────────────────────────────────────────────────────────────────────
+
+Multiple donut charts, each sliced by a different dimension.
+Dimensions available:
+  - By Language
+  - By Input Type
+  - By Output Type
+  - By Platform
+  - By Client
+
+Metric selector: Count or Duration (uploaded / processed / published).
+Top N shown; rest grouped as "Others".
+
+Drill-Down (click any segment):
+  - Expanded panel shows:
+    - Rank (#) and % share of total
+    - 3-column metrics: Uploaded / Processed / Published (count + hours)
+    - Conversion funnel bar (Upload→Process rate, Process→Publish rate)
+    - Summary text: "X accounts for Y% with Z% publish rate"
+  - "← Back" button dismisses
+
+Definition & Insight buttons on each chart.
+
+──────────────────────────────────────────────────────────────────────────────
+4.3 TREND CHART (Uploaded vs Processed vs Published Over Time)
+──────────────────────────────────────────────────────────────────────────────
+
+Type   : Multi-line chart (Chart.js Line)
+Source : monthly_processing_summary
+
+3 Lines:
+  - Uploaded (red #e9434a)
+  - Processed (amber #f59e0b)
+  - Published (green #10b981)
+
+Legend checkboxes: Toggle individual lines on/off.
+Tooltip: All 3 values shown on hover.
+
+Drill-Down (click any month/data point):
+  Level 2 — Client bar chart:
+    - 3-color grouped bar chart per client (Uploaded / Processed / Published)
+    - Clickable bar to select a client
+
+  Level 3 — Client full monthly arc:
+    - 3 summary cards: Total Uploaded / Processed / Published for that client
+    - Monthly row list with sparkline bars
+    - Shows all months' trend for that client
+    - Back button to return to L2, Close to exit
+
+──────────────────────────────────────────────────────────────────────────────
+4.4 ANALYSIS BAR CHART (Multi-Dimension Breakdown)
+──────────────────────────────────────────────────────────────────────────────
+
+Dimension selector: Channel / Client / User / Input Type / Output Type / Language
+Metric selector: Uploaded / Processed / Published (count or hours)
+Chart mode: Grouped / Stacked / 100% Stacked
+
+Source: Corresponding summary tables + videos table.
+Shows top N entities sorted by selected metric.
+
+──────────────────────────────────────────────────────────────────────────────
+4.5 BREAKDOWN LIST TABLE
+──────────────────────────────────────────────────────────────────────────────
+
+Tabular breakdown by selected dimension.
+Columns: Rank, Name, Uploaded, Processed, Published, Publish Rate %
+Sortable columns.
+Color-coded publish rate (green / amber / red).
+
+================================================================================
+5. PAGE 3 — CHANNELS / OPERATIONAL EFFICIENCY
+================================================================================
+
+URL: /dashboard/page3
+Label in Nav: "Channels"
+Target Persona: Client Success, Operations, Account Managers
+
+──────────────────────────────────────────────────────────────────────────────
+5.1 EFFICIENCY MATRIX (Scatter Plot)
+──────────────────────────────────────────────────────────────────────────────
+
+Type   : Scatter chart (Recharts ScatterChart)
+Source : channel_processing_summary
+
+X-axis : Created (Processed) Count
+Y-axis : Published Count
+Points : Each channel (colored by client)
+Size   : Proportional to volume
+
+Ideal channels: Top-right quadrant (high created AND high published)
+Problem channels: Bottom-right (high created but low published)
+
+Client filter: Button group "All" + individual clients.
+
+Drill-Down L1 (click a channel point):
+  - Right panel shows all channels for that client
+  - Ranked by publish efficiency
+  - Bar showing published volume relative to max
+
+Drill-Down L2 (click a channel from ranking):
+  - 3-column metrics: Created / Published / Publish Rate
+  - Count of unpublished processed videos (backlog)
+  - "View raw video records" button
+
+Drill-Down L3 (click raw records):
+  - DrillRawTable component
+  - Filters: client_id + channel_name
+  - Shows up to 100 raw video records
+  - Summary bar: Uploaded / Processed / Published / Publish Rate
+
+──────────────────────────────────────────────────────────────────────────────
+5.2 CLIENT & USER PERFORMANCE RANKING
+──────────────────────────────────────────────────────────────────────────────
+
+Type   : Hierarchical list (expandable tree)
+Source : user_processing_summary grouped by client
+
+Structure:
+  Client row → expand → User rows nested inside
+
+Columns per row:
+  - Rank #
+  - Name
+  - Publish rate bar (color coded: green ≥70%, orange 40-70%, red <40%)
+  - Published count
+  - Created count
+
+Mode toggle: All / Top 10 / Bottom 10 (by published count)
+
+Click client row → expand/collapse users.
+Definition & Insight buttons.
+
+──────────────────────────────────────────────────────────────────────────────
+5.3 MONTHLY CLIENT BILLING CONTRIBUTION (Stacked Area Chart)
+──────────────────────────────────────────────────────────────────────────────
+
+Type   : Stacked Area Chart (Recharts AreaChart)
+Source : monthly_duration_summary
+
+X-axis : Month
+Y-axis : Processed hours (stacked, one color per client)
+Each client is a colored stacked area
+
+Drill-Down L1 (click a month):
+  - Client breakdown table for that month
+  - Each client: hours + delta vs previous month (↑/↓)
+  - Bar showing relative contribution to total
+
+Drill-Down L2 (click a client from table):
+  - 3 summary cards: Total / Avg per month / Peak month
+  - Monthly arc bar chart (all months for that client)
+  - Highlights months above/below average
+  - Back button to return to L1
+
+Raw records option REMOVED from this chart (clean drill).
+
+──────────────────────────────────────────────────────────────────────────────
+5.4 CLIENT GROWTH MOMENTUM (Sparkline List)
+──────────────────────────────────────────────────────────────────────────────
+
+Type   : List of clients with mini sparklines + growth badge
+Source : monthly_duration_summary
+
+Per client row:
+  - Client name
+  - Total hours (all-time)
+  - Mini area sparkline (12 months)
+  - Growth % badge (recent 3 months vs prior 3 months)
+  - Color indicator: Green ↑ >5%, Red ↓ < -5%, Gray → neutral
+
+Drill-Down L2 (click client row):
+  - Total / Avg / Peak summary cards
+  - Monthly list with bars and values
+
+Drill-Down L3 (click a month):
+  - Hours this month
+  - MoM change (value + %)
+  - % of peak month
+  - % of average
+  - Back button
+
+Raw records option REMOVED from this chart.
+
+──────────────────────────────────────────────────────────────────────────────
+5.5 CLIENT PROCESSING SHARE (Donut)
+──────────────────────────────────────────────────────────────────────────────
+
+Type   : Doughnut chart (Chart.js)
+Source : monthly_duration_summary aggregated
+
+Segments: One per client, sized by total processed hours.
+
+Drill-Down (click segment):
+  - Client name + colored dot
+  - 3 metric boxes: Uploaded / Processed / Published hours
+  - Mini trend chart (optional)
+  - Language tags (top 8 languages for this client)
+  - Back button
+
+──────────────────────────────────────────────────────────────────────────────
+5.6 LANGUAGE COVERAGE HEATMAP
+──────────────────────────────────────────────────────────────────────────────
+
+Type   : HTML heatmap table (CSS color-coded cells)
+Source : language_processing_summary × channel/client
+
+Rows   : Clients (sticky left column)
+Columns: Languages
+Cells  : Metric value (color intensity = volume)
+
+Metric selector (dropdown):
+  - Processing Hours / Uploaded Hours / Published Hours
+  - Processing Count / Uploaded Count / Published Count
+
+Cell colors:
+  0 (empty): Light gray
+  Low      : Pale blue
+  Medium   : Medium blue
+  High     : Bright blue
+  Very High: Dark blue
+
+Drill-Down (click any cell = Client × Language):
+  - 3-column metrics: Uploaded / Processed / Published (hours + count)
+  - Pipeline flow: "X → Y% → Z → W% → A" (funnel view)
+  - Option to view raw records via DrillRawTable (client_id + language filter)
+  - Close button
+
+================================================================================
+6. PAGE 4 — CONTENT MIX / STRATEGIC GROWTH HUB
+================================================================================
+
+URL: /dashboard/page4
+Label in Nav: "Content Mix"
+Target Persona: Editorial/Production, Tech/Product, Operations
+
+──────────────────────────────────────────────────────────────────────────────
+6.1 STRATEGIC KPI CARDS (5 Cards)
+──────────────────────────────────────────────────────────────────────────────
+
+Card 1: Total Processed Hours
+  Formula : SUM(total_created_duration across all months)
+  Sub     : "X hours uploaded · Y active clients"
+  Color   : Gray (neutral)
+
+Card 2: Data Completeness Score
+  Formula : (videos with all key fields filled / total videos) × 100
+  Fields  : input_type_name, language_name, published_platform, published_url
+  Color   : Emerald if ≥95%, Amber otherwise
+
+Card 3: Feature Penetration
+  Formula : AVG(distinct output types per client) / MAX possible
+  Display : "X.Y / Z avg output types published per client"
+  Color   : Blue
+
+Card 4: Publish Efficiency (Hours)
+  Formula : total_published_duration / total_created_duration × 100
+  Color   : Green if ≥100%, Rose otherwise
+
+Card 5: At-Risk Accounts
+  Formula : COUNT(clients WHERE published < 100)
+  Color   : Rose if count > 0, Emerald if 0 (all healthy)
+
+Each card has: Definition button + Insight button + drill-down expand button.
+
+──────────────────────────────────────────────────────────────────────────────
+6.2 CONTENT AMPLIFICATION FACTOR (Grouped Bar)
+──────────────────────────────────────────────────────────────────────────────
+
+Type   : Grouped bar chart (Recharts BarChart)
+Source : monthly_processing_summary grouped by client
+
+X-axis : Client ID
+Y-axis : Count
+Bars   : Uploaded (gray) / Processed (red) / Published (green) — 3 bars per client
+
+Drill-Down (click client bars):
+  - Client name + Amplification multiplier (e.g., "5×")
+  - 3-column metrics: Uploaded / Processed / Published
+  - Output type breakdown (tags: type name + published/created counts)
+  - Back button
+
+──────────────────────────────────────────────────────────────────────────────
+6.3 PLATFORM HOURS CHART (Horizontal Bar)
+──────────────────────────────────────────────────────────────────────────────
+
+Type   : Horizontal bar chart (Recharts)
+Source : channel_wise_publishing_duration grouped by platform
+
+X-axis : Published Hours
+Y-axis : Platform name
+
+"Show all platforms" toggle → detailed expansion per platform.
+
+Drill-Down L2 (click platform bar):
+  - Platform name
+  - Client breakdown list (hours per client for this platform)
+  - Bar chart showing relative contribution
+
+Drill-Down L3 (click client from platform list):
+  - Client name + Platform name
+  - Published hours metric
+  - Platform share % for this client
+  - Option to view raw records via DrillRawTable (client_id + platform filter)
+  - Back button
+
+──────────────────────────────────────────────────────────────────────────────
+6.4 CONTENT FLOW NETWORK (Sankey-style)
+──────────────────────────────────────────────────────────────────────────────
+
+Type   : Custom 3-column node-connection layout (not a standard chart)
+Source : videos table joined with summaries
+
+Columns:
+  Column 1 (Red): Input Types
+  Column 2 (Blue): Channels
+  Column 3 (Green): Output Types
+
+Nodes: Pill-shaped buttons showing node name + total volume.
+
+Filters:
+  - Client filter: "All" + per-client buttons
+  - Language filter: "All" + per-language buttons
+
+Interaction:
+  - Click a node → Right panel shows:
+    - Incoming connections: "← Receives from X (N videos)"
+    - Outgoing connections: "→ Sends to Y (N videos)"
+    - Bars sized proportionally by volume
+
+Legend: Input (red) → Channel (blue) → Output (green)
+
+Use case: "Which input types go through which channels to produce which outputs?"
+
+──────────────────────────────────────────────────────────────────────────────
+6.5 PLATFORM PUBLISHING MIX (100% Stacked Bar)
+──────────────────────────────────────────────────────────────────────────────
+
+Type   : 100% Stacked horizontal bar (Recharts)
+Source : output_type_processing_summary × platform
+
+X-axis : Platform name
+Y-axis : Percentage (0-100%)
+Stacks : Output type (Shorts / Reels / Summary / etc.)
+
+Interaction: Click a segment to drill into that output_type × platform detail.
+
+──────────────────────────────────────────────────────────────────────────────
+6.6 PRODUCTION VELOCITY (Box-Plot Style)
+──────────────────────────────────────────────────────────────────────────────
+
+Type   : Horizontal bar chart styled as box plot (Recharts)
+Source : Calculated from videos: AVG/MEDIAN/P25/P75/MAX of (published_at - uploaded_at)
+
+Per platform:
+  - IQR range (Q1–Q3) shown as red bar
+  - Median line (dark red)
+  - Average marker (orange)
+  - Min / Max whiskers
+
+Tooltip shows: Min / Q1 / Median / Q3 / Max / Avg (all in hours)
+
+Drill-Down (click platform):
+  - Platform name + rank ("3rd fastest of 7 platforms")
+  - Full distribution breakdown
+  - All-platforms comparison bar chart
+  - Close button
+
+Use case: Identifies platform bottlenecks in the publishing pipeline.
+
+──────────────────────────────────────────────────────────────────────────────
+6.7 LANGUAGE HEATMAP (Client × Language)
+──────────────────────────────────────────────────────────────────────────────
+
+Identical to Page 3 Language Heatmap but with page4 data context.
+(Repeated here for Content Mix focus.)
+
+Drill-Down L3: DrillRawTable with {client_id, language} filters.
+
+──────────────────────────────────────────────────────────────────────────────
+6.8 FEATURE ADOPTION HEATMAP (Client × Output Type)
+──────────────────────────────────────────────────────────────────────────────
+
+Type   : HTML heatmap table
+Rows   : Clients
+Columns: Output Types (Shorts, Reels, Summary, Chapters, etc.)
+Cells  : Published count (color intensity = adoption level)
+
+Drill-Down (click cell = Client × Output Type):
+  - Client name + Output type
+  - Published count + hours
+  - DrillRawTable with {client_id, output_type} filters
+
+Use case: "Which clients are NOT using which output types? → Upsell opportunity."
+
+================================================================================
+7. PAGE 5 — DATA EXPLORER
+================================================================================
+
+URL: /dashboard/page5
+Label in Nav: "Explorer"
+Target Persona: Tech/Product, Operations, Data Teams
+
+──────────────────────────────────────────────────────────────────────────────
+7.1 DATA QUALITY ALERTS PANEL (Top)
+──────────────────────────────────────────────────────────────────────────────
+
+Shows automated data quality checks with 3 severity levels:
+
+CRITICAL (red):
+  - Fields with >20% null rate (platform, user, language)
+  - Duplicate video IDs
+  - Published videos with missing platform URL
+
+WARNING (orange):
+  - Fields with 5-20% null rate
+  - "Unknown" values in categorical fields
+  - Potential stale data (no uploads in >30 days)
+
+INFO (blue):
+  - Fields with <5% null rate
+  - General completeness statistics
+
+Filter buttons: All / Critical / Warning / Info (with counts)
+
+Each alert shows:
+  - Severity icon + label
+  - Category (Completeness, Consistency, Freshness)
+  - Issue message
+  - Affected table reference
+
+Definition & Insight buttons.
+
+──────────────────────────────────────────────────────────────────────────────
+7.2 VIDEOS TABLE (Filterable, Sortable, Exportable)
+──────────────────────────────────────────────────────────────────────────────
+
+Source: videos table (all columns)
+Row limit: 200 rows in view, all rows in CSV export
+
+Features:
+  1. Search bar — full text search across all visible columns
+  2. Column filters — dropdowns for client_id, channel_name, user_name
+     (auto-discovered from distinct values 2–100)
+  3. Column visibility toggle (checkboxes, min 1 required)
+  4. Sort by any column (click header: asc → desc → none)
+  5. CSV export (downloads filtered + sorted data)
+  6. Add Column modal (column name + data type → posts to /api/page5/add-column)
+  7. Expand modal (full-screen table view)
+
+Columns visible by default:
+  video_id, client_id, channel_name, user_name, input_type_name,
+  output_type_name, language_name, published_platform, published_flag,
+  uploaded_at, duration, headline
+
+──────────────────────────────────────────────────────────────────────────────
+7.3 SUMMARY TABLES PANEL (10 Pre-built Aggregation Tables)
+──────────────────────────────────────────────────────────────────────────────
+
+Tables available:
+  1. channel_processing_summary     → "Channel Processing"
+  2. channel_user_processing_summary → "Channel · User"
+  3. channel_wise_publishing_counts  → "Pub. Counts"
+  4. channel_wise_publishing_duration → "Pub. Duration"
+  5. input_type_processing_summary   → "Input Type"
+  6. language_processing_summary     → "Language"
+  7. monthly_duration_summary        → "Monthly Duration"
+  8. monthly_processing_summary      → "Monthly Processing"
+  9. output_type_processing_summary  → "Output Type"
+  10. user_processing_summary        → "User Processing"
+
+Each table card shows:
+  - Table name + definition tooltip
+  - Row count
+  - Compacted table (first ~15 rows visible)
+  - Insight button (table-specific insights)
+  - Add Column button
+  - Expand button (full-screen modal)
+  - Export CSV button
+
+Table selector popup: Toggle which of the 10 tables are displayed.
+
+──────────────────────────────────────────────────────────────────────────────
+7.4 RESIZABLE PANES
+──────────────────────────────────────────────────────────────────────────────
+
+Vertical drag handle between Videos table and Summary tables (20%-80% range).
+Horizontal drag handle between Alerts panel and tables section.
+
+──────────────────────────────────────────────────────────────────────────────
+7.5 UPLOAD DATA MODAL
+──────────────────────────────────────────────────────────────────────────────
+
+Trigger: "Upload Dataset" button in header
+Supports: CSV, XLSX, JSON file formats
+Shows: Drag-and-drop zone + file picker
+Result: Rows processed, raw rows inserted, videos inserted, parse errors
+
+================================================================================
+8. PAGE 6 — CUSTOM WIDGETS (AI-Powered Builder)
+================================================================================
+
+URL: /dashboard/page6
+Label in Nav: "Custom Widgets"
+Target Persona: All (self-service analytics for any stakeholder)
+
+──────────────────────────────────────────────────────────────────────────────
+8.1 WIDGET GENERATOR
+──────────────────────────────────────────────────────────────────────────────
+
+Input: Natural language prompt (textarea)
+Keyboard shortcut: Cmd/Ctrl + Enter to generate
+
+Examples:
+  "Total uploaded videos per client as a bar chart"
+  "Monthly publishing trend this year as a line chart"
+  "What is the total processed video count? (KPI)"
+  "Top 5 languages by processed count as a pie chart"
+  "Show channel vs publish rate as a table"
+
+AI Pipeline:
+  1. Fetch full DB schema (excluding clients + custom_widgets tables)
+  2. Call Gemini 2.5 Flash with system prompt + schema + user prompt
+  3. LLM returns JSON: { title, widget_type, sql }
+  4. Validate SQL (no forbidden DDL/DML operations)
+  5. Execute SQL against PostgreSQL
+  6. Build chart spec (labels, datasets)
+  7. Return preview data to frontend
+
+LLM Safety:
+  - Forbidden: DROP / DELETE / UPDATE / INSERT / ALTER / TRUNCATE / CREATE / GRANT / REVOKE
+  - Only SELECT queries allowed
+  - Returns error if unsafe SQL generated
+
+Widget Types Supported:
+  - kpi    → Single big number (one row, one aggregate column)
+  - bar    → Grouped/stacked bar chart (Recharts BarChart)
+  - line   → Line/trend chart (Recharts LineChart)
+  - pie    → Donut/pie chart (Recharts PieChart)
+  - table  → Scrollable HTML table
+
+──────────────────────────────────────────────────────────────────────────────
+8.2 PREVIEW PANEL
+──────────────────────────────────────────────────────────────────────────────
+
+Shown after generation:
+  - Widget type badge (color-coded)
+  - Editable title (text input — user can rename before saving)
+  - Live chart/KPI preview using Recharts
+  - "View generated SQL" disclosure (shows SQL in monospace)
+  - "Save to Dashboard" button (green)
+  - "Dismiss" button to cancel preview
+
+──────────────────────────────────────────────────────────────────────────────
+8.3 SAVED WIDGETS GRID
+──────────────────────────────────────────────────────────────────────────────
+
+Layout: 1-3 column responsive grid
+Persistence: PostgreSQL custom_widgets table (survives browser refresh)
+
+Per widget card:
+  - Widget type badge (color-coded per type)
+  - Title
+  - Prompt text (truncated)
+  - Full rendered chart/KPI
+  - Creation date (footer)
+  - Delete button (✕) — removes from DB + grid instantly
+
+Table auto-created on first visit:
+  CREATE TABLE IF NOT EXISTS custom_widgets (
+    id SERIAL PRIMARY KEY, title TEXT, prompt TEXT,
+    sql_query TEXT, widget_type TEXT, config JSONB, created_at TIMESTAMPTZ
+  )
+
+================================================================================
+9. AI DATA CHAT (GLOBAL FEATURE)
+================================================================================
+
+Trigger: "Ask AI" button in top navigation bar (every page)
+Behavior: Slide-in panel (no page navigation)
+
+──────────────────────────────────────────────────────────────────────────────
+9.1 CAPABILITIES
+──────────────────────────────────────────────────────────────────────────────
+
+  - Converts natural language questions to SQL queries
+  - Executes SQL against live PostgreSQL database
+  - Returns results as table + inferred chart + text insights
+  - Maintains multi-turn chat memory (session-based)
+  - Context-aware: knows current page (CEO Overview / Channels / etc.)
+  - Semantic routing: detects analytics vs general questions
+
+──────────────────────────────────────────────────────────────────────────────
+9.2 TECHNICAL STACK
+──────────────────────────────────────────────────────────────────────────────
+
+  - Model    : Gemini 3 Flash (LangChain ChatGoogleGenerativeAI)
+  - Memory   : In-memory session history (LangChain HumanMessage/AIMessage)
+  - Schema   : Full DB schema fetched and injected into prompt
+  - Safety   : FORBIDDEN regex blocks DDL/DML
+  - RAG      : Vector embeddings of metric definitions for semantic retrieval
+               (rag-store.ts, rag-embeddings.ts, rag-sync.ts)
+
+──────────────────────────────────────────────────────────────────────────────
+9.3 EXAMPLE QUERIES
+──────────────────────────────────────────────────────────────────────────────
+
+  "Show channel-wise usage hours for the last month"
+  "Which channels have the biggest processed vs published gap?"
+  "Top 10 videos by duration and their publish status"
+  "How many videos were uploaded by CLT001 in January?"
+  "What is the publish rate for each output type?"
+  "Which users process the most content but publish the least?"
+  "Show monthly trend of all clients"
+  "Explain Total Uploaded Volume"
+
+──────────────────────────────────────────────────────────────────────────────
+9.4 RESPONSE FORMAT
+──────────────────────────────────────────────────────────────────────────────
+
+Each response contains:
+  - Generated SQL query (shown in disclosure)
+  - Data table (if results returned)
+  - Auto-inferred chart type (line/bar/pie/table)
+  - AI-generated insights (bullet points)
+  - Transparent about what filters/dimensions were applied
+
+================================================================================
+10. REUSABLE UI COMPONENTS
+================================================================================
+
+DefinitionButton
+  - "?" icon on every KPI card, chart header, table
+  - Hover popover showing metric definition
+  - Purpose: Makes the dashboard self-explanatory for non-technical users
+
+InsightButton
+  - Lightbulb icon (next to DefinitionButton)
+  - Click to load AI-generated insight for that specific widget
+  - Calls /api/insights with page + widget ID
+  - Shows actionable recommendations
+
+DrillRawTable (components/DrillRawTable.tsx)
+  - Universal raw records component used across all pages
+  - Accepts filters: { client_id, channel_name, month, language, output_type, input_type, platform }
+  - Calls /api/drilldown with those filters
+  - Shows: Summary bar (Uploaded/Processed/Published/Publish Rate) + detail table
+  - Columns: ID, Client, Channel, User, Input, Output, Language, Platform, Uploaded Date, Status
+
+Color Coding (consistent across all pages):
+  - Red    (#e9434a)  → Uploaded / Primary accent
+  - Amber  (#f59e0b)  → Processed
+  - Green  (#10b981)  → Published / Good
+  - Rose   (#ef4444)  → At risk / Alert
+  - Blue   (#3b82f6)  → Info / Channels
+  - Purple (#8b5cf6)  → Secondary metric
+  - Gray             → Neutral / Scaffolding
+
+================================================================================
+11. DATA MODEL & BACKEND
+================================================================================
+
+Star Schema Fact Table: videos
+  video_id           SERIAL PRIMARY KEY
+  client_id          TEXT
+  channel_id         TEXT (references channel)
+  user_id            TEXT
+  input_type_name    TEXT (Speech / Interview / Special Report / etc.)
+  output_type_name   TEXT (Shorts / Reels / Summary / Chapters / etc.)
+  language_name      TEXT
+  published_platform TEXT (YouTube / Instagram / etc.)
+  published_flag     BOOLEAN
+  published_url      TEXT
+  uploaded_at        TIMESTAMPTZ
+  processed_at       TIMESTAMPTZ
+  published_at       TIMESTAMPTZ
+  duration           INTERVAL or NUMERIC (seconds)
+  headline           TEXT
+
+Month Assignment (COALESCE logic):
+  TO_CHAR(COALESCE(uploaded_at, published_at, processed_at), 'YYYY-MM')
+  → Ensures videos with partial dates still appear in monthly summaries
+
+API Routes:
+  /api/page1                → CEO dashboard KPIs, trend data, health alerts
+  /api/page2                → Breakdown dimensions, funnel data
+  /api/page3                → Channel efficiency, client share, language heatmap
+  /api/page4                → Content flow, platform mix, velocity, heatmaps
+  /api/page5                → Table data, quality alerts, schema introspection
+  /api/page5/add-column     → Adds custom column to any table
+  /api/page6/generate       → AI widget generation (Gemini 2.5 Flash)
+  /api/page6/widgets        → GET list / POST save custom widget
+  /api/page6/widgets/[id]   → DELETE custom widget
+  /api/drilldown            → Universal raw video records (multi-filter)
+  /api/insights             → Widget-level AI insight generation
+  /api/chat                 → Conversational SQL AI agent
+  /api/rag/sync             → Sync RAG embeddings for semantic search
+  /api/upload-data          → CSV/XLSX/JSON data ingestion
+
+================================================================================
+12. WHAT HAS BEEN ADDRESSED FROM THE PROBLEM STATEMENT
+================================================================================
+
+PS Requirement                             | Status | Where Implemented
+-------------------------------------------|--------|-----------------------------
+Executive KPIs (uploaded/processed/pub.)   | DONE   | Page 1 — KPI Grid (9 cards)
+Trend & time-based charts                  | DONE   | Page 1 (lifecycle), Page 2
+Multi-level drill-downs                    | DONE   | ALL pages (L1→L2→L3→raw)
+Client/Channel/User breakdowns             | DONE   | Pages 3, 4 (scatter, ranking)
+Publishing funnel & conversion rate        | DONE   | Page 2 (funnel KPIs, trend)
+Language/Platform breakdowns               | DONE   | Pages 3, 4 (heatmaps)
+Output type / content format mix           | DONE   | Pages 1, 4 (stacked bars)
+Input type / content category analysis     | DONE   | Page 4 (content flow network)
+Double-dimension breakdown                 | DONE   | Language × Client (p3), Output × Client (p4)
+Production velocity (time-to-market)       | DONE   | Page 1 (KPI), Page 4 (box plot)
+AI Content Multiplier                      | DONE   | Page 1 (KPI card)
+Data Quality monitoring                    | DONE   | Page 1 (health alerts), Page 5
+Searchable video-level detail table        | DONE   | Page 5 (Explorer)
+CSV export                                 | DONE   | Page 5 (all tables)
+Natural language / conversational queries  | DONE   | AI Chat (global)
+Vector/semantic search (RAG)               | DONE   | RAG embeddings + rag-store
+Custom prompt-driven KPI/chart creation    | DONE   | Page 6 (widget builder)
+At-risk account identification             | DONE   | Page 4 (KPI card)
+Content waste tracking                     | DONE   | Page 1 (Content Waste Index)
+Non-technical user accessibility           | DONE   | DefinitionButton on every widget
+Scalable / modular architecture            | DONE   | Star schema, summary tables, API routes
+Client concentration risk                  | DONE   | Page 1 (KPI card)
+
+================================================================================
+13. ESSENTIAL THINGS TO ADD BEFORE PRESENTATION
+================================================================================
+
+PRIORITY 1 — CRITICAL (Must-have for judges)
+---------------------------------------------
+
+A. DATE RANGE FILTER (Global)
+   - The problem statement explicitly mentions Date Range and Comparison Date Range
+   - Currently: No global date filter; all data is shown for all time
+   - Add: Global date range picker (month-year from/to) in the nav bar
+   - This affects every page's data query via a global filter context
+
+B. CLIENT / CHANNEL FILTER (Global)
+   - Problem statement mentions Company (Client) and Channel as standard filters
+   - Currently: Some pages have local client filters but no global one
+   - Add: Global filter bar on Page 1–4 headers with Client + Channel dropdowns
+
+C. COMPARISON PERIOD KPIs
+   - Currently: MoM comparison exists on some KPIs
+   - Add: Year-over-Year (YoY) comparison toggle on Page 1 KPI cards
+   - Example: "This month: 450 videos (↑23% vs last month | ↑67% vs same month last year)"
+
+D. BILLABLE vs NON-BILLABLE TRACKING
+   - Problem statement explicitly lists billable_flag / non_billable_flag
+   - Currently: Not tracked or surfaced
+   - Add: Billable % KPI on Page 1, Billable filter on Page 5
+
+E. METRIC DICTIONARY PAGE (Documentation)
+   - Judges award marks for "Metric Clarity"
+   - Add: A dedicated `/docs` or modal showing:
+     * All KPI definitions with formulas
+     * Dimension definitions
+     * Data quality rules documented
+     * Assumptions listed
+
+PRIORITY 2 — HIGH IMPACT (Strongly recommended)
+-------------------------------------------------
+
+F. DATA COMPLETENESS SCORE DRILLDOWN
+   - Page 4 shows the % but doesn't drill into WHICH fields are incomplete
+   - Add: Click to expand showing field-by-field null rate table
+   - Example: "published_platform: 34% null | user_id: 12% null"
+
+G. PERIOD COMPARISON CHART
+   - Problem statement asks for period comparisons
+   - Add: Side-by-side bar chart on Page 2 comparing current month vs previous month
+   - Or: Add a "Compare to" period selector on the trend chart
+
+H. "UNKNOWN" VALUES TRACKING
+   - Show count/% of "Unknown" language / input type / team values
+   - Add to Page 5 quality alerts
+   - Add breakdown in Page 3 Language Heatmap (separate "Unknown" column)
+
+I. CLIENT SUMMARY CARD
+   - For each client, a one-page summary card accessible from Page 3
+   - Shows: Total uploaded / processed / published (all time + this month)
+   - Top channels, top output types, top languages
+   - Trend (growing / declining / stable)
+
+J. ALERT NOTIFICATIONS
+   - Threshold-based alerts (e.g., "Client CLT003 hasn't uploaded in 30 days")
+   - These could be shown on Page 1 as an "Alerts" section
+
+PRIORITY 3 — NICE TO HAVE (Bonus points)
+-----------------------------------------
+
+
+L. VIDEO-LEVEL SEARCH WITH FILTERS
+   - Page 5 has the table but lacks URL filtering
+   - Add: Filter by published_url (hostname), published_flag, date range
+
+M. SANKEY UPGRADE (Page 6 / Page 4)
+   - Replace the current node-layout with a proper D3 Sankey diagram
+   - Shows flow volume proportionally: Input Type → Channel → Output Type
+
+N. MOBILE RESPONSIVE CHECK
+   - Run through the dashboard on a tablet/mobile viewport
+   - Ensure critical KPIs are readable
+
+O. ERROR / FAILURE TRACKING (if data available)
+   - Problem statement mentions "Videos with errors and type of errors"
+   - Add: If error column exists, surface on Page 5 quality alerts
+
+P. USER ONBOARDING TOUR
+   - First-time overlay explaining the 6 pages and AI chat
+   - Tooltip-based walkthrough (e.g., Shepherd.js or custom)
+
+PRIORITY 4 — FOR METRIC DOCUMENTATION
+---------------------------------------
+
+Q. ADD TO PRESENTATION DECK:
+   - Metric dictionary (all formulas from Section 3–8 above)
+   - Data model diagram (star schema ERD)
+   - Assumptions:
+     * Duration = time of raw video (not AI output duration)
+     * Month assignment: COALESCE(uploaded_at, published_at, processed_at)
+     * Content Waste = processed − published (hours)
+     * Publish Rate = published / processed × 100
+
+================================================================================
+14. PRESENTATION STORY FLOW (SUGGESTED — 8-12 slides)
+================================================================================
+
+Slide 1: Title
+  "Frammer AI Analytics Dashboard — A 6-Page, AI-Powered Analytics Platform"
+  Built for: Founders · Client Success · Operations · Editorial · Tech
+
+Slide 2: Problem Statement Recap
+  - What was missing from the old dashboard
+  - Our design philosophy: Overview → Detail → Raw → AI
+
+Slide 3: Architecture Overview
+  - Star schema, Next.js, PostgreSQL, Gemini AI, RAG
+  - Modular: any new metric = new API route + new card (no redesign)
+
+Slide 4: Page 1 — Executive Dashboard
+  - Live demo of 9 KPIs with hover definitions
+  - Show MoM trends and lifecycle trend drill-down
+  - Highlight: AI Content Multiplier, Human Hours Saved
+
+Slide 5: Pages 2 & 3 — Analysis & Channels
+  - Funnel KPIs → Show publish rate drop-offs
+  - Efficiency Matrix → Identify underperforming channels (quadrant view)
+  - Language Heatmap → Multi-dimensional drill (Client × Language)
+
+Slide 6: Page 4 — Content Mix & Operations
+  - Content Amplification Factor per client
+  - Feature Adoption Heatmap (upsell opportunity visual)
+  - Production Velocity box-plot (which platform is slowest?)
+
+Slide 7: Page 5 — Data Quality & Explorer
+  - Show Data Quality Alerts (critical issues surfaced automatically)
+  - Demo the search + sort + export on Videos table
+  - Add Column live demo (extensibility)
+
+Slide 8: AI Data Chat (NLQ)
+  - Live demo: "Which channels have the biggest publish gap?"
+  - Show: SQL generated → data returned → chart rendered → insight bullets
+  - RAG for semantic context (metric definitions)
+
+Slide 9: Page 6 — Custom Widget Builder
+  - Live demo: Type "Total uploads by client bar chart" → Generate → Save
+  - Persistent dashboard for any stakeholder
+  - No code needed — just describe what you want
+
+Slide 10: Key Insights from Data
+  - Top 3 actionable findings from the actual data
+  - Example: "Client X has 8x multiplier but 23% publish rate — content waste opportunity"
+
+Slide 11: Scalability Roadmap
+  - New output types: Add row to output_type table → appears everywhere
+  - New dimensions: Add column to videos → add filter to API → add chart
+  - SLA metrics, billing analytics, error tracking as "next layer"
+
+Slide 12: Closing + Demo
+  - Show live URL
+  - Q&A
+
+================================================================================
+15. JUDGING CRITERIA MAPPING
+================================================================================
+
+Criterion                        | Marks | How We Address It
+---------------------------------|-------|--------------------------------------------
+Business KPI Design              |  /20  | 9 strategic KPIs with formulas (p1),
+                                 |       | Funnel KPIs (p2), 5 ops KPIs (p4)
+Dashboard UX & Navigability      |  /20  | 6-page nav, drill-downs on every chart,
+                                 |       | DefinitionButton + InsightButton everywhere
+Analytical Depth & Insights      |  /20  | Multi-dim heatmaps, L1→L3 drill-downs,
+                                 |       | AI Chat + RAG, Custom Widget Builder
+Data Quality & Correctness       |  /15  | Page 5 alerts (3 severity levels),
+                                 |       | Completeness KPI, health alert table
+Scalability / Extensibility      |  /15  | Star schema, summary tables, modular API,
+                                 |       | Custom widgets as open-ended extension
+Presentation & Communication     |  /10  | Suggested 12-slide deck above,
+                                 |       | Clear KPI definitions on all widgets
+
+TOTAL                            | /100
+
+================================================================================
+NOTES FOR DEMO DAY
+================================================================================
+
+1. Start the app: npm run dev (or next start if built)
+2. Ensure DATABASE_URL and GOOGLE_API_KEY are set in .env.local
+3. Test all 6 pages before the presentation
+4. Have sample AI chat queries ready (copy-paste for speed)
+5. Have Page 6 pre-seeded with 2-3 saved widgets
+6. Know which client in the data has the most interesting story
+7. Prepare fallback screenshots in case of connectivity issues
+
+================================================================================
+END OF DOCUMENT
+Generated: March 2026 | Frammer AI Analytics Dashboard v1
+================================================================================

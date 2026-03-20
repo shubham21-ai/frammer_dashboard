@@ -108,7 +108,7 @@ export default function KPICard({
         {(currentMonthValue || prevValue || hasTrend) && (
           <div className="mt-2 flex flex-col gap-0.5 border-t border-gray-100 pt-2">
             {currentMonthValue != null && !allTimeValue && (
-            <div className="text-[10px] text-gray-500">
+              <div className="text-[10px] text-gray-500">
                 {currentMonthLabel ?? "This month"}: <span className="font-medium text-gray-600">{currentMonthValue}</span>
               </div>
             )}
@@ -130,17 +130,17 @@ export default function KPICard({
       {/* Definition popover */}
       {showDefinition && (
         <div className="absolute z-50 left-0 right-0 mt-1 rounded-lg border border-gray-200 bg-white p-3 shadow-xl">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
-              Definition
-            </div>
-            <p className="text-xs text-gray-700 leading-relaxed">{tooltip}</p>
-            <button
-              type="button"
-              onClick={() => setShowDefinition(false)}
-              className="mt-2 text-[10px] font-medium text-emerald-600 hover:text-emerald-700"
-            >
-              Close
-            </button>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
+            Definition
+          </div>
+          <p className="text-xs text-gray-700 leading-relaxed">{tooltip}</p>
+          <button
+            type="button"
+            onClick={() => setShowDefinition(false)}
+            className="mt-2 text-[10px] font-medium text-emerald-600 hover:text-emerald-700"
+          >
+            Close
+          </button>
         </div>
       )}
     </div>

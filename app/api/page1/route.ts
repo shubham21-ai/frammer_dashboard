@@ -37,6 +37,7 @@ export async function GET() {
       contentWasteMonthlyRes,
       clientConcentrationMonthlyRes,
       topOutputByMonthRes,
+      lastUploadRes,
     ] = await Promise.all([
       // 1. Human Hours Saved: SUM(total_uploaded_duration) * 3
       query(`
@@ -311,6 +312,16 @@ export async function GET() {
         FROM ranked WHERE rn = 1
         ORDER BY month
       `),
+
+      // Last upload date per client (for inactive client alerts)
+      query(`
+        SELECT c.client_id,
+          MAX(v.uploaded_at) AS last_upload
+        FROM clients c
+        LEFT JOIN videos v ON v.client_id = c.client_id AND v.uploaded_at IS NOT NULL
+        GROUP BY c.client_id
+        ORDER BY last_upload NULLS LAST
+      `),
     ]);
 
     // Parse results
@@ -408,6 +419,49 @@ export async function GET() {
       }
     }
 
+    // Build alerts
+    const alerts: Array<{ type: string; clientId: string; message: string; severity: string }> = [];
+    const lastUploadRows = (lastUploadRes as { rows: { client_id: string; last_upload: string | null }[] }).rows;
+    const now = new Date();
+    for (const r of lastUploadRows) {
+      if (!r.last_upload) {
+        alerts.push({
+          type: "inactive",
+          clientId: r.client_id,
+          message: `${r.client_id} has no upload activity recorded`,
+          severity: "warning",
+        });
+      } else {
+        const daysSince = Math.floor((now.getTime() - new Date(r.last_upload).getTime()) / 86400000);
+        if (daysSince >= 30) {
+          alerts.push({
+            type: "inactive",
+            clientId: r.client_id,
+            message: `${r.client_id} hasn't uploaded in ${daysSince} days`,
+            severity: daysSince >= 60 ? "critical" : "warning",
+          });
+        }
+      }
+    }
+    // Volume drop alerts: current month < 50% of prev month per client
+    if (currentMonth && prevMonth) {
+      for (const c of clients) {
+        const currRow = lifecycleCountRows.find(r => r.client_id === c && r.month === currentMonth);
+        const prevClientRow = lifecycleCountRows.find(r => r.client_id === c && r.month === prevMonth);
+        const currUpl = Number(currRow?.total_uploaded ?? 0);
+        const prevUpl = Number(prevClientRow?.total_uploaded ?? 0);
+        if (prevUpl >= 10 && currUpl < prevUpl * 0.5) {
+          const dropPct = Math.round((1 - currUpl / prevUpl) * 100);
+          alerts.push({
+            type: "volume_drop",
+            clientId: c,
+            message: `${c} uploads dropped ${dropPct}% (${currUpl} vs ${prevUpl} last month)`,
+            severity: dropPct >= 70 ? "critical" : "warning",
+          });
+        }
+      }
+    }
+
     // Pipeline stats monthly
     const pipelineMonthly = monthlyRows.map((r) => ({
       month: r.month,
@@ -499,6 +553,42 @@ export async function GET() {
       return `${monthName} ${y}`;
     };
 
+    // YoY month: same month, previous year
+    const yoyMonth = currentMonth
+      ? `${parseInt(currentMonth.split("-")[0], 10) - 1}-${currentMonth.split("-")[1]}`
+      : "";
+
+    // Extract YoY values from already-fetched monthly arrays
+    const yoyMonthlyRow = monthlyRows.find((r) => r.month === yoyMonth);
+    const yoyUploaded = Number(yoyMonthlyRow?.total_uploaded ?? 0);
+    const yoyCreated = Number(yoyMonthlyRow?.total_created ?? 0);
+
+    const yoyHumanHoursSec = monthlyDurRows
+      .filter((r) => r.month === yoyMonth)
+      .reduce((s, r) => s + Number(r.total_seconds ?? 0), 0);
+
+    const yoyTtmHours = Number(ttMarketRows.find((r) => r.month === yoyMonth)?.avg_hours ?? 0);
+    const yoyWasteSec = Number(wasteRows.find((r) => r.month === yoyMonth)?.waste_seconds ?? 0);
+    const yoyCCPct = Number(ccRows.find((r) => r.month === yoyMonth)?.concentration_pct ?? 0);
+    const yoyTopOutput = topOutputRows.find((r) => r.month === yoyMonth)?.top_output ?? "—";
+    const yoyMultiplier = yoyUploaded > 0 ? yoyCreated / yoyUploaded : 0;
+
+    const humanHoursYoYTrendPct = yoyHumanHoursSec > 0
+      ? ((humanHoursCurrent - yoyHumanHoursSec) / yoyHumanHoursSec) * 100 : 0;
+    const ttmYoYTrendPct = yoyTtmHours > 0
+      ? ((yoyTtmHours - ttMarketCurrent) / yoyTtmHours) * 100 : 0;
+    const contentWasteYoYTrendPct = yoyWasteSec > 0
+      ? ((wasteCurrentSec - yoyWasteSec) / yoyWasteSec) * 100 : 0;
+    const ccYoYTrendPct = yoyCCPct > 0
+      ? ((yoyCCPct - ccCurrentPct) / yoyCCPct) * 100 : 0;
+    const uploadedYoYTrendPct = yoyUploaded > 0
+      ? ((currentUploaded - yoyUploaded) / yoyUploaded) * 100 : 0;
+    const currentCreatedVal = currentRow ? Number(currentRow.total_created ?? 0) : 0;
+    const createdYoYTrendPct = yoyCreated > 0
+      ? ((currentCreatedVal - yoyCreated) / yoyCreated) * 100 : 0;
+    const aiMultiplierYoYTrendPct = yoyMultiplier > 0
+      ? ((currentMonthMultiplier - yoyMultiplier) / yoyMultiplier) * 100 : 0;
+
     const response = {
       kpis: {
         humanHoursSaved: Math.round(humanHoursSaved / 3600),
@@ -552,6 +642,23 @@ export async function GET() {
 
         prevMonthLabel: formatMonthLabel(prevMonthLabel),
         currentMonthLabel: formatMonthLabel(currentMonthLabel),
+
+        yoyMonthLabel: formatMonthLabel(yoyMonth),
+        humanHoursYoYTrendPct,
+        humanHoursYoYFormatted: formatDuration(yoyHumanHoursSec * 3),
+        timeToMarketYoYTrendPct: ttmYoYTrendPct,
+        timeToMarketYoYHours: yoyTtmHours,
+        contentWasteYoYTrendPct,
+        contentWasteYoYFormatted: formatDuration(yoyWasteSec),
+        clientConcentrationYoYTrendPct: ccYoYTrendPct,
+        clientConcentrationYoYPct: yoyCCPct,
+        totalUploadedYoYTrendPct: uploadedYoYTrendPct,
+        yoyUploaded,
+        totalCreatedYoYTrendPct: createdYoYTrendPct,
+        yoyCreated,
+        aiMultiplierYoYTrendPct,
+        yoyMultiplier: Math.round(yoyMultiplier * 10) / 10,
+        yoyTopOutput,
       },
       lifecycleTrend: { byClient: byClient, clients },
       pipelineStats: {
@@ -569,6 +676,7 @@ export async function GET() {
         data: featureMatrixData,
       },
       dataHealthAlerts,
+      alerts,
     };
 
     return NextResponse.json(response);

@@ -43,6 +43,8 @@ function toBreakdown(rows: SummaryRow[]) {
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const clientFilter = sp.get("client") || "all";
+  const fromMonth = sp.get("from") || "";
+  const toMonth   = sp.get("to")   || "";
 
   try {
     const clientWhere =
@@ -52,6 +54,23 @@ export async function GET(req: NextRequest) {
     const clientWhereAndCps =
       clientFilter !== "all" ? ` AND client_id = $1` : "";
     const params = clientFilter !== "all" ? [clientFilter] : [];
+
+    // Build month-filtered params for monthly_processing_summary queries
+    const monthParams: unknown[] = clientFilter !== "all" ? [clientFilter] : [];
+    let monthIdx = monthParams.length + 1;
+    const monthConditions: string[] = [];
+    if (clientFilter !== "all") monthConditions.push(`client_id = $1`);
+    if (fromMonth) { monthConditions.push(`month >= $${monthIdx++}`); monthParams.push(fromMonth); }
+    if (toMonth)   { monthConditions.push(`month <= $${monthIdx++}`); monthParams.push(toMonth); }
+    const monthWhere = monthConditions.length > 0 ? `WHERE ${monthConditions.join(" AND ")}` : "";
+
+    // Build month-filtered params for monthlyByClient query (no client filter, but date range)
+    const monthByClientParams: unknown[] = [];
+    let monthByClientIdx = 1;
+    const monthByClientConditions: string[] = [];
+    if (fromMonth) { monthByClientConditions.push(`month >= $${monthByClientIdx++}`); monthByClientParams.push(fromMonth); }
+    if (toMonth)   { monthByClientConditions.push(`month <= $${monthByClientIdx++}`); monthByClientParams.push(toMonth); }
+    const monthByClientWhere = monthByClientConditions.length > 0 ? `WHERE ${monthByClientConditions.join(" AND ")}` : "";
 
     const [
       clientsRes,
@@ -163,18 +182,20 @@ export async function GET(req: NextRequest) {
                 SUM(total_created) AS total_created,
                 SUM(total_published) AS total_published
          FROM monthly_processing_summary
-         ${clientWhere}
+         ${monthWhere}
          GROUP BY month
          ORDER BY month`,
-        params
+        monthParams
       ),
 
-      // Monthly by client (for trend drill-down; always unfiltered)
+      // Monthly by client (for trend drill-down; filtered by date range if provided)
       query(
         `SELECT client_id, month,
                 total_uploaded, total_created, total_published
          FROM monthly_processing_summary
-         ORDER BY month, client_id`
+         ${monthByClientWhere}
+         ORDER BY month, client_id`,
+        monthByClientParams
       ),
 
       query(

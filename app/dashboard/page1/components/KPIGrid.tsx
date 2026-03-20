@@ -138,7 +138,7 @@ const CARD_DEFINITIONS: Array<{
 
 export default function KPIGrid({ kpis }: KPIGridProps) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-2.5">
+    <div className="rounded-2xl p-3 glass-card">
       <div className="flex items-center justify-between mb-2 gap-2">
         <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-2">
           Executive Vital Signs

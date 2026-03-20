@@ -66,7 +66,7 @@ export default function Page1Dashboard() {
   if (!data) return null;
 
   return (
-    <div className="min-h-screen bg-white relative">
+    <div className="min-h-screen relative">
       {refreshing && (
         <div className="fixed top-12 left-0 right-0 z-50 h-0.5 overflow-hidden bg-gray-100">
           <div className="h-full w-1/3 animate-[slide_1s_ease-in-out_infinite] bg-red-500" />

@@ -22,6 +22,9 @@ html.dark video {
   --bg-glass: rgba(255, 255, 255, 0.55);
   --border-dim: rgba(0, 0, 0, 0.07);
   --border-glass: rgba(0, 0, 0, 0.09);
+  /* Dashboard cards: one neutral edge, a bit stronger than gray-200 (no red / white rims) */
+  --dash-border: #b8becd;
+  --dash-border-hover: #9aa3b5;
   --text-1: #0a0a1a;
   --text-2: #4b5563;
   --text-3: #9ca3af;
@@ -51,13 +54,24 @@ body {
   background: var(--bg-card);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border: 1px solid var(--border-dim);
+  border: 1px solid var(--dash-border);
   transition: background 0.3s, border-color 0.3s, box-shadow 0.3s;
 }
 .glass-card:hover {
   background: var(--bg-glass);
-  border-color: rgba(233, 67, 74, 0.25);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(233, 67, 74, 0.08);
+  border-color: var(--dash-border-hover);
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.08), 0 0 0 1px color-mix(in srgb, var(--dash-border) 55%, transparent);
+}
+
+/* Reusable dashboard surfaces (CEO, Channels, etc.) */
+.dash-border {
+  border: 1px solid var(--dash-border);
+}
+.dash-border-interactive:hover {
+  border-color: var(--dash-border-hover);
+}
+.dash-divide-b {
+  border-bottom: 1px solid var(--dash-border);
 }
 
 /* ── Gradient text ────────────────────────────────────────────────────── */

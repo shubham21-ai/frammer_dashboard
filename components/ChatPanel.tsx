@@ -14,7 +14,6 @@ type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   question?: string;
-  sql_query?: string;
   table_data?: Record<string, unknown>[];
   chart_spec?: Record<string, unknown>;
   insights?: string[];
@@ -207,26 +206,6 @@ function ChatChart({ spec }: { spec: Record<string, unknown> }) {
   return null;
 }
 
-// ─── SQL toggle ────────────────────────────────────────────────────────────────
-
-function SqlBlock({ sql }: { sql: string }) {
-  const [open, setOpen] = useState(true);
-  return (
-    <div className="rounded-xl overflow-hidden border border-slate-200/80 bg-slate-900/95 shadow-lg">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400 hover:text-slate-200 flex items-center gap-1.5 bg-slate-800/80 transition-colors"
-      >
-        {open ? "▾" : "▸"} SQL
-      </button>
-      {open && (
-        <pre className="text-xs text-slate-200 p-3 overflow-x-auto font-mono leading-relaxed">
-          {sql}
-        </pre>
-      )}
-    </div>
-  );
-}
 
 // ─── Main component ────────────────────────────────────────────────────────────
 
@@ -395,7 +374,6 @@ export default function ChatPanel({ open, onClose, pageContext }: ChatPanelProps
         updateAssistantMessage(assistantMsgId, { error: data.error });
       } else {
         const insights = Array.isArray(data.insights) ? data.insights : [];
-        const sqlQuery = typeof data.sql_query === "string" ? data.sql_query : "";
         const chartSpec =
           data.chart_spec && typeof data.chart_spec === "object"
             ? (data.chart_spec as Record<string, unknown>)
@@ -416,15 +394,6 @@ export default function ChatPanel({ open, onClose, pageContext }: ChatPanelProps
           revealTimersRef.current.push(t);
           delay += 260;
         });
-
-        // Then reveal SQL toggle (collapsed by default)
-        if (sqlQuery) {
-          const t = window.setTimeout(() => {
-            updateAssistantMessage(assistantMsgId, { sql_query: sqlQuery });
-          }, delay);
-          revealTimersRef.current.push(t);
-          delay += 220;
-        }
 
         // Then reveal chart/table
         if (Object.keys(chartSpec).length > 0 || tableData.length > 0) {
@@ -590,11 +559,6 @@ export default function ChatPanel({ open, onClose, pageContext }: ChatPanelProps
                           </li>
                         ))}
                       </ul>
-                    </div>
-                  )}
-                  {m.sql_query && (
-                    <div className="pt-1">
-                      <SqlBlock sql={m.sql_query} />
                     </div>
                   )}
                   {m.chart_spec && Object.keys(m.chart_spec).length > 0 && (

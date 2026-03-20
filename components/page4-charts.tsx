@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { DefinitionButton } from "@/components/ui/DefinitionButton";
 import { InsightButton } from "@/components/ui/InsightButton";
+import DrillRawTable from "@/components/DrillRawTable";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, Cell, PieChart, Pie, Legend,
@@ -102,10 +103,11 @@ export function KPIInsightCards({ kpis }: { kpis: Page4KPIs }) {
 
 export function MonthlyContributionChart({ data, clientIds }: { data: Record<string, string | number>[]; clientIds: string[] }) {
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+  const [drillClient, setDrillClient] = useState<string | null>(null);
   const monthRow = data.find((r) => String(r.month) === selectedMonth);
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden h-full flex flex-col">
-      <div className="shrink-0 px-4 py-2 border-b border-gray-100 bg-gradient-to-r from-white to-red-50/30 flex items-start justify-between gap-2">
+    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm flex flex-col min-h-[340px]">
+      <div className="shrink-0 px-4 py-2 border-b border-gray-100 bg-gradient-to-r from-white to-red-50/30 flex items-start justify-between gap-2 rounded-t-2xl">
         <div>
           <h3 className="text-sm font-bold text-gray-900">Monthly Client Billing Contribution</h3>
           <p className="text-[10px] text-gray-400 mt-0.5">Processed hours stacked by client</p>
@@ -115,7 +117,7 @@ export function MonthlyContributionChart({ data, clientIds }: { data: Record<str
           <InsightButton page="page4" widget="monthly_client_billing_contribution" title="Monthly Client Billing Contribution insight" />
         </div>
       </div>
-      <div className="flex-1 min-h-0 p-2">
+      <div className="h-[220px] p-2">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
             data={data}
@@ -138,21 +140,101 @@ export function MonthlyContributionChart({ data, clientIds }: { data: Record<str
           </AreaChart>
         </ResponsiveContainer>
       </div>
-      {selectedMonth && monthRow && (
-        <div className="mx-2 mb-2 rounded-lg border border-gray-200 bg-white p-2 text-xs text-gray-700">
-          <div className="mb-1 flex items-center justify-between">
-            <p className="font-semibold">Month drilldown: {selectedMonth}</p>
-            <button type="button" onClick={() => setSelectedMonth(null)} className="text-[10px] font-semibold text-gray-500 hover:text-gray-700">Close</button>
+      {selectedMonth && monthRow && (() => {
+        const monthIndex = data.findIndex((r) => String(r.month) === selectedMonth);
+        const prevRow = monthIndex > 0 ? data[monthIndex - 1] : null;
+        const ranked = clientIds
+          .map((id) => ({
+            id,
+            hours: Number(monthRow[id] ?? 0),
+            prev: prevRow ? Number(prevRow[id] ?? 0) : null,
+          }))
+          .sort((a, b) => b.hours - a.hours);
+        const maxHours = ranked[0]?.hours || 1;
+        const total = ranked.reduce((s, r) => s + r.hours, 0);
+        return (
+          <div className="mx-2 mb-2 rounded-lg border border-gray-200 bg-white p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-gray-800">Client breakdown — {selectedMonth}</p>
+                <p className="text-[10px] text-gray-400">{total.toFixed(1)}h total across {ranked.filter(r => r.hours > 0).length} clients</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {drillClient && (
+                  <button type="button" onClick={() => setDrillClient(null)} className="text-[10px] font-semibold text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200">← Back</button>
+                )}
+                <button type="button" onClick={() => { setSelectedMonth(null); setDrillClient(null); }} className="text-[10px] font-semibold text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200">Close</button>
+              </div>
+            </div>
+            {drillClient ? (
+              /* ── L3: selected client full monthly arc ── */
+              (() => {
+                const clientSeries = data.map((m) => ({ month: String(m.month), value: Number(m[drillClient] ?? 0) }));
+                const clientTotal = clientSeries.reduce((s, r) => s + r.value, 0);
+                const clientAvg = clientSeries.length > 0 ? clientTotal / clientSeries.length : 0;
+                const clientPeak = clientSeries.reduce((best, r) => (r.value > best.value ? r : best), clientSeries[0] ?? { month: "", value: 0 });
+                const maxV = Math.max(...clientSeries.map((s) => s.value), 0.01);
+                return (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Full monthly arc — {drillClient}</p>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[["Total", `${clientTotal.toFixed(0)}h`], ["Avg/Mo", `${clientAvg.toFixed(1)}h`], ["Peak", `${clientPeak.value.toFixed(0)}h`]].map(([l, v]) => (
+                        <div key={l} className="rounded bg-gray-50 px-2 py-1.5 text-center border border-gray-100">
+                          <p className="text-[9px] text-gray-400 uppercase">{l}</p>
+                          <p className="text-xs font-black text-gray-800">{v}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="space-y-1">
+                      {clientSeries.map((s) => (
+                        <div key={s.month} className="flex items-center gap-2">
+                          <span className="w-20 text-[9px] text-gray-500 truncate">{String(s.month).split(", ")[0]}</span>
+                          <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${(s.value / maxV) * 100}%`, backgroundColor: s.value >= clientAvg ? "#e9434a" : "#fca5a5" }} />
+                          </div>
+                          <span className="w-12 text-right text-[9px] font-bold text-gray-700">{s.value.toFixed(1)}h</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()
+            ) : (
+              <>
+                <p className="text-[9px] text-gray-400 mb-1">Click a client to drill into their full history →</p>
+                <div className="space-y-1.5 mb-2">
+                  {ranked.filter((r) => r.hours > 0).map((r, i) => {
+                    const pct = (r.hours / maxHours) * 100;
+                    const delta = r.prev !== null ? r.hours - r.prev : null;
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => setDrillClient(r.id)}
+                        className="w-full flex items-center gap-2 text-left hover:bg-red-50/30 rounded px-1 transition-colors"
+                      >
+                        <span className="w-16 text-[10px] font-semibold text-gray-700 truncate">{r.id}</span>
+                        <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: COLORS[i % COLORS.length] }} />
+                        </div>
+                        <span className="w-14 text-right text-[10px] font-bold text-gray-800">{r.hours.toFixed(1)}h</span>
+                        {delta !== null && (
+                          <span className={`w-12 text-right text-[10px] font-bold ${delta > 0.05 ? "text-emerald-600" : delta < -0.05 ? "text-rose-500" : "text-gray-400"}`}>
+                            {delta > 0.05 ? "↑" : delta < -0.05 ? "↓" : "→"}{Math.abs(delta).toFixed(1)}h
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                {prevRow && (
+                  <p className="text-[10px] text-gray-400">↑↓ vs {String(prevRow.month)}</p>
+                )}
+              </>
+            )}
           </div>
-          <div className="flex flex-wrap gap-1">
-            {clientIds.slice(0, 8).map((id) => (
-              <span key={id} className="rounded bg-gray-50 px-2 py-0.5 text-[10px]">
-                {id}: {Number(monthRow[id] ?? 0).toFixed(1)}h
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
@@ -163,6 +245,7 @@ export function MonthlyContributionChart({ data, clientIds }: { data: Record<str
 
 export function ClientMomentumTracker({ data, clientIds }: { data: Record<string, string | number>[]; clientIds: string[] }) {
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
+  const [drillMonth, setDrillMonth] = useState<string | null>(null);
   const clientRows = useMemo(() => clientIds.map((id, idx) => {
     const series = data.map((m) => ({ month: String(m.month), value: Number(m[id] ?? 0) }));
     const recent = series.slice(-3), prev = series.slice(-6, -3);
@@ -174,8 +257,8 @@ export function ClientMomentumTracker({ data, clientIds }: { data: Record<string
   }), [data, clientIds]);
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden h-full flex flex-col">
-      <div className="shrink-0 px-4 py-2 border-b border-gray-100 bg-gradient-to-r from-white to-red-50/30 flex items-start justify-between gap-2">
+    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm flex flex-col min-h-[340px]">
+      <div className="shrink-0 px-4 py-2 border-b border-gray-100 bg-gradient-to-r from-white to-red-50/30 flex items-start justify-between gap-2 rounded-t-2xl">
         <div>
           <h3 className="text-sm font-bold text-gray-900">Client Growth Momentum</h3>
           <p className="text-[10px] text-gray-400 mt-0.5">Quarterly trend shift per account</p>
@@ -185,7 +268,7 @@ export function ClientMomentumTracker({ data, clientIds }: { data: Record<string
           <InsightButton page="page4" widget="client_growth_momentum" title="Client Growth Momentum insight" />
         </div>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-1.5">
+      <div className="max-h-[240px] overflow-y-auto px-3 py-1.5">
         {clientRows.map((row) => (
           <div
             key={row.id}
@@ -210,13 +293,102 @@ export function ClientMomentumTracker({ data, clientIds }: { data: Record<string
             </div>
           </div>
         ))}
-        {selectedClient && (
-          <div className="mt-2 rounded-lg border border-gray-200 bg-white p-2 text-xs text-gray-700">
-            <p className="font-semibold">{selectedClient} timeline drilldown</p>
-            <p className="mt-0.5 text-gray-600">Selected client trend is highlighted in the list above for quick diagnosis.</p>
-          </div>
-        )}
       </div>
+      {selectedClient && (() => {
+        const row = clientRows.find((r) => r.id === selectedClient);
+        if (!row) return null;
+        const total = row.series.reduce((s, r) => s + r.value, 0);
+        const avg = row.series.length > 0 ? total / row.series.length : 0;
+        const peak = row.series.reduce((best, r) => (r.value > best.value ? r : best), row.series[0] ?? { month: "", value: 0 });
+        const maxVal = Math.max(...row.series.map((s) => s.value), 0.01);
+        return (
+          <div className="border-t border-gray-100 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-gray-800">{selectedClient} — Full Timeline</p>
+                <p className="text-[10px] text-gray-400">
+                  {row.growth > 0 ? "↑" : row.growth < 0 ? "↓" : "→"} {Math.abs(row.growth)}% QoQ · peak {peak.value.toFixed(0)}h in {String(peak.month).split(", ")[0]}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {drillMonth && (
+                  <button type="button" onClick={() => setDrillMonth(null)} className="text-[10px] font-semibold text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200">← Back</button>
+                )}
+                <button type="button" onClick={() => { setSelectedClient(null); setDrillMonth(null); }} className="text-[10px] font-semibold text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200">Close ✕</button>
+              </div>
+            </div>
+            {drillMonth ? (
+              /* ── L3: specific month context card ── */
+              (() => {
+                const monthIdx = row.series.findIndex((s) => s.month === drillMonth);
+                const monthVal = row.series[monthIdx]?.value ?? 0;
+                const prevMonthVal = monthIdx > 0 ? (row.series[monthIdx - 1]?.value ?? 0) : null;
+                const delta = prevMonthVal !== null ? monthVal - prevMonthVal : null;
+                const pctOfPeak = peak.value > 0 ? Math.round((monthVal / peak.value) * 100) : 0;
+                const pctOfAvg = avg > 0 ? Math.round((monthVal / avg) * 100) : 0;
+                return (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{drillMonth} · {selectedClient}</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div className="rounded bg-gray-50 px-2 py-1.5 text-center border border-gray-100">
+                        <p className="text-[9px] text-gray-400 uppercase">Hours This Month</p>
+                        <p className="text-sm font-black text-gray-800">{monthVal.toFixed(1)}h</p>
+                      </div>
+                      <div className={`rounded px-2 py-1.5 text-center border ${delta === null ? "bg-gray-50 border-gray-100" : delta > 0 ? "bg-emerald-50 border-emerald-100" : "bg-rose-50 border-rose-100"}`}>
+                        <p className="text-[9px] text-gray-400 uppercase">MoM Change</p>
+                        <p className={`text-sm font-black ${delta === null ? "text-gray-500" : delta > 0 ? "text-emerald-600" : "text-rose-500"}`}>
+                          {delta === null ? "—" : `${delta > 0 ? "↑" : "↓"}${Math.abs(delta).toFixed(1)}h`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 text-[10px] text-gray-500">
+                      <span className="rounded bg-gray-100 px-2 py-0.5">{pctOfPeak}% of peak</span>
+                      <span className="rounded bg-gray-100 px-2 py-0.5">{pctOfAvg}% of avg</span>
+                    </div>
+                  </div>
+                );
+              })()
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-1.5 mb-2">
+                  <div className="rounded bg-gray-50 px-2 py-1.5 text-center border border-gray-100">
+                    <p className="text-[9px] text-gray-400 uppercase">Total</p>
+                    <p className="text-xs font-black text-gray-800">{total.toFixed(0)}h</p>
+                  </div>
+                  <div className="rounded bg-gray-50 px-2 py-1.5 text-center border border-gray-100">
+                    <p className="text-[9px] text-gray-400 uppercase">Avg / Mo</p>
+                    <p className="text-xs font-black text-gray-800">{avg.toFixed(1)}h</p>
+                  </div>
+                  <div className="rounded bg-gray-50 px-2 py-1.5 text-center border border-gray-100">
+                    <p className="text-[9px] text-gray-400 uppercase">Peak</p>
+                    <p className="text-xs font-black text-gray-800">{peak.value.toFixed(0)}h</p>
+                  </div>
+                </div>
+                <p className="text-[9px] text-gray-400 mb-1">Click a month bar to drill down →</p>
+                <div className="space-y-1">
+                  {row.series.map((s, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setDrillMonth(s.month)}
+                      className="w-full flex items-center gap-2 text-left hover:bg-red-50/30 rounded px-1 transition-colors"
+                    >
+                      <span className="w-16 text-[9px] text-gray-500 truncate">{String(s.month).split(", ")[0]}</span>
+                      <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${(s.value / maxVal) * 100}%`, backgroundColor: s.value >= avg ? row.color : row.color + "66" }}
+                        />
+                      </div>
+                      <span className="w-12 text-right text-[9px] font-semibold text-gray-700">{s.value.toFixed(1)}h</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -492,6 +664,9 @@ export function PlatformHoursChart({
   platformHoursByClient?: PlatformHoursByClientRow[];
 }) {
   const [showAllPlatforms, setShowAllPlatforms] = useState(false);
+  const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
+  const [drillClient, setDrillClient] = useState<string | null>(null);
+  const [showRaw, setShowRaw] = useState(false);
 
   const platformGroups = useMemo(() => {
     if (!platformHoursByClient) return [];
@@ -571,12 +746,104 @@ export function PlatformHoursChart({
               <YAxis type="category" dataKey="platform" tick={{ fontSize: 11, fill: "#6b7280" }} axisLine={false} tickLine={false} width={80} />
               <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid #e5e7eb" }}
                 formatter={(v) => [`${Number(v).toFixed(1)}h`, "Published"]} />
-              <Bar dataKey="hours" radius={[0, 6, 6, 0]} maxBarSize={24}>
+              <Bar
+                dataKey="hours"
+                radius={[0, 6, 6, 0]}
+                maxBarSize={24}
+                cursor="pointer"
+                onClick={(barData) => {
+                  const platform = (barData as { platform?: string }).platform;
+                  if (platform) setSelectedPlatform((p) => (p === platform ? null : platform));
+                }}
+              >
                 {data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         )}
+        {selectedPlatform && !showAllPlatforms && (() => {
+          const group = platformGroups.find((g) => g.platform === selectedPlatform);
+          if (!group) return null;
+          const maxClientHours = group.clients[0]?.hours || 1;
+          return (
+            <div className="mx-4 mb-3 rounded-lg border border-gray-200 bg-white p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-gray-800">{selectedPlatform} — Client breakdown</p>
+                  <p className="text-[10px] text-emerald-600 font-bold">{group.totalHours.toFixed(1)}h total</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {drillClient && (
+                    <button type="button" onClick={() => { setDrillClient(null); setShowRaw(false); }} className="text-[10px] font-semibold text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200">← Back</button>
+                  )}
+                  <button type="button" onClick={() => { setSelectedPlatform(null); setDrillClient(null); setShowRaw(false); }} className="text-[10px] font-semibold text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200">Close ✕</button>
+                </div>
+              </div>
+              {drillClient ? (
+                /* ── L3: raw records for this client × platform ── */
+                showRaw ? (
+                  <DrillRawTable
+                    filters={{ client_id: drillClient, platform: selectedPlatform }}
+                    title={`Raw records — ${drillClient} · ${selectedPlatform}`}
+                    onClose={() => setShowRaw(false)}
+                  />
+                ) : (
+                  (() => {
+                    const clientRow = group.clients.find((c) => c.client_id === drillClient);
+                    const clientPct = group.totalHours > 0 ? ((clientRow?.hours ?? 0) / group.totalHours) * 100 : 0;
+                    return (
+                      <div className="flex flex-col gap-2">
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <div className="rounded bg-emerald-50 px-2 py-1.5 text-center border border-emerald-100">
+                            <p className="text-[9px] text-gray-400 uppercase">Published Hours</p>
+                            <p className="text-sm font-black text-emerald-600">{(clientRow?.hours ?? 0).toFixed(1)}h</p>
+                          </div>
+                          <div className="rounded bg-gray-50 px-2 py-1.5 text-center border border-gray-100">
+                            <p className="text-[9px] text-gray-400 uppercase">Platform Share</p>
+                            <p className="text-sm font-black text-gray-800">{clientPct.toFixed(0)}%</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowRaw(true)}
+                          className="w-full rounded-lg border border-dashed border-gray-200 py-2 text-[10px] font-semibold text-gray-400 hover:border-red-300 hover:text-red-500 transition-colors"
+                        >
+                          🔍 View raw records for {drillClient} on {selectedPlatform}
+                        </button>
+                      </div>
+                    );
+                  })()
+                )
+              ) : group.clients.length > 0 ? (
+                <>
+                  <p className="text-[9px] text-gray-400 mb-1.5">Click a client to see their raw records →</p>
+                  <div className="space-y-1.5">
+                    {group.clients.map((r, i) => {
+                      const pct = group.totalHours > 0 ? (r.hours / group.totalHours) * 100 : 0;
+                      return (
+                        <button
+                          key={r.client_id}
+                          type="button"
+                          onClick={() => setDrillClient(r.client_id)}
+                          className="w-full flex items-center gap-2 text-left hover:bg-red-50/30 rounded px-1 transition-colors"
+                        >
+                          <span className="w-16 text-[10px] font-semibold text-gray-700 truncate">{r.client_id}</span>
+                          <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${(r.hours / maxClientHours) * 100}%`, backgroundColor: COLORS[i % COLORS.length] }} />
+                          </div>
+                          <span className="w-14 text-right text-[10px] font-bold text-gray-800">{r.hours.toFixed(1)}h</span>
+                          <span className="w-8 text-right text-[10px] text-gray-400">{pct.toFixed(0)}%</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <p className="text-[10px] text-gray-400">No client data for this platform.</p>
+              )}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
@@ -596,6 +863,7 @@ export function LanguageHeatmap({ matrix }: { matrix: LanguageMatrix }) {
     | "publishedCount"
   >("processingHours");
   const [selectedCell, setSelectedCell] = useState<{ client: string; language: string; value: number } | null>(null);
+  const [showRaw, setShowRaw] = useState(false);
 
   const getLanguageMetricValue = useCallback(
     (clientId: string, language: string): number => {
@@ -699,18 +967,71 @@ export function LanguageHeatmap({ matrix }: { matrix: LanguageMatrix }) {
             ))}
           </tbody>
         </table>
-        {selectedCell && (
-          <div className="mt-2 rounded-lg border border-gray-200 bg-white p-2 text-xs text-gray-700">
-            <div className="mb-1 flex items-center justify-between">
-              <p className="font-semibold">Cell drilldown</p>
-              <button type="button" onClick={() => setSelectedCell(null)} className="text-[10px] font-semibold text-gray-500 hover:text-gray-700">Close</button>
+        {selectedCell && (() => {
+          const cell = matrix.data[selectedCell.client]?.[selectedCell.language];
+          if (!cell) return null;
+          const uploadH = Number(cell.uploadedHours ?? 0);
+          const procH = Number(cell.processingHours ?? 0);
+          const pubH = Number(cell.publishedHours ?? 0);
+          const uploadC = Number(cell.uploadedCount ?? 0);
+          const procC = Number(cell.processingCount ?? 0);
+          const pubC = Number(cell.publishedCount ?? 0);
+          const processRate = uploadC > 0 ? Math.round((procC / uploadC) * 100) : 0;
+          const publishRate = procC > 0 ? Math.round((pubC / procC) * 100) : 0;
+          return (
+            <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-800">
+                  {selectedCell.client} · {selectedCell.language}
+                </p>
+                <button type="button" onClick={() => { setSelectedCell(null); setShowRaw(false); }} className="text-[10px] font-semibold text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200">Close ✕</button>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5 mb-2">
+                <div className="rounded bg-gray-50 px-2 py-1.5 text-center border border-gray-100">
+                  <p className="text-[9px] text-gray-400 uppercase">Uploaded</p>
+                  <p className="text-xs font-black text-gray-800">{uploadH.toFixed(0)}h</p>
+                  <p className="text-[9px] text-gray-400">{uploadC.toLocaleString()} videos</p>
+                </div>
+                <div className="rounded bg-red-50 px-2 py-1.5 text-center border border-red-100">
+                  <p className="text-[9px] text-gray-400 uppercase">Processed</p>
+                  <p className="text-xs font-black text-red-600">{procH.toFixed(0)}h</p>
+                  <p className="text-[9px] text-gray-400">{procC.toLocaleString()} videos</p>
+                </div>
+                <div className="rounded bg-emerald-50 px-2 py-1.5 text-center border border-emerald-100">
+                  <p className="text-[9px] text-gray-400 uppercase">Published</p>
+                  <p className="text-xs font-black text-emerald-600">{pubH.toFixed(0)}h</p>
+                  <p className="text-[9px] text-gray-400">{pubC.toLocaleString()} videos</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] flex-wrap mb-2">
+                <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-gray-600">{uploadC}</span>
+                <span className="text-gray-300">→</span>
+                <span className={`rounded px-2 py-0.5 font-bold ${processRate >= 80 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{processRate}%</span>
+                <span className="text-gray-300">→</span>
+                <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-gray-600">{procC}</span>
+                <span className="text-gray-300">→</span>
+                <span className={`rounded px-2 py-0.5 font-bold ${publishRate >= 50 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-600"}`}>{publishRate}%</span>
+                <span className="text-gray-300">→</span>
+                <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-gray-600">{pubC}</span>
+              </div>
+              {showRaw ? (
+                <DrillRawTable
+                  filters={{ client_id: selectedCell.client, language: selectedCell.language }}
+                  title={`Raw records — ${selectedCell.client} · ${selectedCell.language}`}
+                  onClose={() => setShowRaw(false)}
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowRaw(true)}
+                  className="w-full rounded-lg border border-dashed border-gray-200 py-2 text-[10px] font-semibold text-gray-400 hover:border-red-300 hover:text-red-500 transition-colors"
+                >
+                  🔍 View raw records — {selectedCell.client} · {selectedCell.language}
+                </button>
+              )}
             </div>
-            <p>
-              {selectedCell.client} / {selectedCell.language}: {selectedCell.value.toLocaleString()}
-              {metric.includes("Hours") ? "h" : ""}
-            </p>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );
@@ -723,6 +1044,7 @@ export function LanguageHeatmap({ matrix }: { matrix: LanguageMatrix }) {
 export function FeatureAdoptionHeatmap({ matrix }: { matrix: FeatureMatrix }) {
   const [metric, setMetric] = useState<"published" | "created">("published");
   const [selectedCell, setSelectedCell] = useState<{ client: string; outputType: string; value: number } | null>(null);
+  const [showRaw, setShowRaw] = useState(false);
   const maxVal = useMemo(() => {
     let mx = 0;
     for (const cid of matrix.clients) for (const ot of matrix.outputTypes) {
@@ -790,17 +1112,51 @@ export function FeatureAdoptionHeatmap({ matrix }: { matrix: FeatureMatrix }) {
             ))}
           </tbody>
         </table>
-        {selectedCell && (
-          <div className="mt-2 rounded-lg border border-gray-200 bg-white p-2 text-xs text-gray-700">
-            <div className="mb-1 flex items-center justify-between">
-              <p className="font-semibold">Cell drilldown</p>
-              <button type="button" onClick={() => setSelectedCell(null)} className="text-[10px] font-semibold text-gray-500 hover:text-gray-700">Close</button>
+        {selectedCell && (() => {
+          const cell = matrix.data[selectedCell.client]?.[selectedCell.outputType];
+          const created = Number(cell?.created ?? 0);
+          const published = Number(cell?.published ?? 0);
+          const publishRate = created > 0 ? Math.round((published / created) * 100) : 0;
+          return (
+            <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-800">
+                  {selectedCell.client} · {selectedCell.outputType}
+                </p>
+                <button type="button" onClick={() => { setSelectedCell(null); setShowRaw(false); }} className="text-[10px] font-semibold text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200">Close ✕</button>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5 mb-2">
+                <div className="rounded bg-red-50 px-2 py-1.5 text-center border border-red-100">
+                  <p className="text-[9px] text-gray-400 uppercase">Processed</p>
+                  <p className="text-sm font-black text-red-600">{created.toLocaleString()}</p>
+                </div>
+                <div className="rounded bg-emerald-50 px-2 py-1.5 text-center border border-emerald-100">
+                  <p className="text-[9px] text-gray-400 uppercase">Published</p>
+                  <p className="text-sm font-black text-emerald-600">{published.toLocaleString()}</p>
+                </div>
+                <div className={`rounded px-2 py-1.5 text-center border ${publishRate >= 50 ? "bg-emerald-50 border-emerald-100" : "bg-rose-50 border-rose-100"}`}>
+                  <p className="text-[9px] text-gray-400 uppercase">Pub Rate</p>
+                  <p className={`text-sm font-black ${publishRate >= 50 ? "text-emerald-600" : "text-rose-500"}`}>{publishRate}%</p>
+                </div>
+              </div>
+              {showRaw ? (
+                <DrillRawTable
+                  filters={{ client_id: selectedCell.client, output_type: selectedCell.outputType }}
+                  title={`Raw records — ${selectedCell.client} · ${selectedCell.outputType}`}
+                  onClose={() => setShowRaw(false)}
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowRaw(true)}
+                  className="w-full rounded-lg border border-dashed border-gray-200 py-2 text-[10px] font-semibold text-gray-400 hover:border-red-300 hover:text-red-500 transition-colors"
+                >
+                  🔍 View raw records — {selectedCell.client} · {selectedCell.outputType}
+                </button>
+              )}
             </div>
-            <p>
-              {selectedCell.client} / {selectedCell.outputType}: {selectedCell.value.toLocaleString()} {metric}
-            </p>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

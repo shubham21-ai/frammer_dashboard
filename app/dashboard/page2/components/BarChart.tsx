@@ -187,27 +187,56 @@ export default function AnalysisBarChart({
           {sortedDim1.length} {dim1Label.toLowerCase()}s
         </p>
       )}
-      {selectedPoint && (
-        <div className="mt-1 rounded-lg border border-gray-200 bg-white p-2.5">
-          <div className="mb-1.5 flex items-center justify-between">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
-              Drilldown Selection
-            </p>
-            <button
-              type="button"
-              onClick={() => setSelectedPoint(null)}
-              className="rounded border border-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-500 hover:border-gray-300 hover:text-gray-700"
-            >
-              Close
-            </button>
+      {selectedPoint && (() => {
+        const item = dim1Data.find((d) => d.name === selectedPoint.dim1);
+        if (!item) return null;
+        const totalUp = dim1Data.reduce((s, d) => s + d.up, 0) || 1;
+        const rankByUp = [...dim1Data].sort((a, b) => b.up - a.up).findIndex((d) => d.name === selectedPoint.dim1) + 1;
+        const processRate = item.up > 0 ? Math.round((item.pr / item.up) * 100) : 0;
+        const publishRate = item.pr > 0 ? Math.round((item.pb / item.pr) * 100) : 0;
+        const sharePct = Math.round((item.up / totalUp) * 100);
+        return (
+          <div className="mt-1 rounded-lg border border-gray-200 bg-white p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Drill-down</p>
+                <p className="text-xs font-semibold text-gray-900">{selectedPoint.dim1}</p>
+                <p className="text-[10px] text-gray-400">
+                  #{rankByUp} by uploaded · {sharePct}% of total
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedPoint(null)}
+                className="rounded border border-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-500 hover:border-gray-300 hover:text-gray-700"
+              >
+                Close
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5 mb-2">
+              <div className="rounded bg-gray-50 px-2 py-1.5 text-center border border-gray-100">
+                <p className="text-[9px] text-gray-400 uppercase">Uploaded</p>
+                <p className="text-sm font-black text-gray-800">{item.up.toLocaleString()}</p>
+              </div>
+              <div className="rounded bg-red-50 px-2 py-1.5 text-center border border-red-100">
+                <p className="text-[9px] text-gray-400 uppercase">Processed</p>
+                <p className="text-sm font-black text-red-600">{item.pr.toLocaleString()}</p>
+              </div>
+              <div className="rounded bg-emerald-50 px-2 py-1.5 text-center border border-emerald-100">
+                <p className="text-[9px] text-gray-400 uppercase">Published</p>
+                <p className="text-sm font-black text-emerald-600">{item.pb.toLocaleString()}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap text-[10px]">
+              <span className="text-gray-500">Process rate:</span>
+              <span className={`rounded px-2 py-0.5 font-bold ${processRate >= 80 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{processRate}%</span>
+              <span className="text-gray-300">·</span>
+              <span className="text-gray-500">Publish rate:</span>
+              <span className={`rounded px-2 py-0.5 font-bold ${publishRate >= 50 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-600"}`}>{publishRate}%</span>
+            </div>
           </div>
-          <p className="text-xs text-gray-700">
-            <span className="font-semibold">{selectedPoint.dim1}</span> x{" "}
-            <span className="font-semibold">{selectedPoint.dim2}</span>:{" "}
-            <span className="font-semibold">{selectedPoint.value.toLocaleString()}</span>
-          </p>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

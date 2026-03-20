@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import DrillRawTable from "@/components/DrillRawTable";
 import { DefinitionButton } from "@/components/ui/DefinitionButton";
 import { InsightButton } from "@/components/ui/InsightButton";
 import {
@@ -106,6 +107,8 @@ function EfficiencyTooltip({ active, payload }: any) {
 export function EfficiencyMatrix({ data }: { data: EfficiencyPoint[] }) {
   const [selectedClient, setSelectedClient] = useState<string>("all");
   const [selectedPoint, setSelectedPoint] = useState<EfficiencyPoint | null>(null);
+  const [drillChannel, setDrillChannel] = useState<EfficiencyPoint | null>(null);
+  const [showRaw, setShowRaw] = useState(false);
 
   const clientIds = Array.from(
     new Set(data.map((d) => d.client_id).filter((id): id is string => !!id))
@@ -221,25 +224,98 @@ export function EfficiencyMatrix({ data }: { data: EfficiencyPoint[] }) {
           </ScatterChart>
         </ResponsiveContainer>
       </div>
-      {selectedPoint && (
-        <div className="mt-2 rounded-lg border border-zinc-200 bg-white p-2.5 text-xs text-zinc-700">
-          <div className="mb-1 flex items-center justify-between">
-            <p className="font-semibold text-zinc-900">Selected Point</p>
-            <button
-              type="button"
-              onClick={() => setSelectedPoint(null)}
-              className="rounded border border-zinc-200 px-2 py-0.5 text-[10px] font-semibold text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
-            >
-              Close
-            </button>
+      {selectedPoint && (() => {
+        const clientChannels = data
+          .filter((d) => d.client_id === selectedPoint.client_id)
+          .sort((a, b) => b.publish_rate - a.publish_rate);
+        const maxPublished = Math.max(...clientChannels.map((c) => c.published_count), 1);
+        return (
+          <div className="mt-2 rounded-lg border border-zinc-200 bg-white p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-zinc-900">{selectedPoint.client_id}</p>
+                <p className="text-[10px] text-zinc-500">
+                  {clientChannels.length} channel{clientChannels.length !== 1 ? "s" : ""} — ranked by efficiency
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedPoint(null)}
+                className="rounded border border-zinc-200 px-2 py-0.5 text-[10px] font-semibold text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
+              >
+                Close
+              </button>
+            </div>
+            {drillChannel ? (
+              /* ── L3: Channel detail + raw table ── */
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-zinc-900">{drillChannel.channel_name}</p>
+                    <p className="text-[10px] text-zinc-500">Client: {drillChannel.client_id}</p>
+                  </div>
+                  <button type="button" onClick={() => { setDrillChannel(null); setShowRaw(false); }} className="rounded border border-zinc-200 px-2 py-0.5 text-[10px] font-semibold text-zinc-500 hover:text-zinc-700">← Back</button>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <div className="rounded bg-zinc-50 px-2 py-1.5 text-center border border-zinc-100">
+                    <p className="text-[9px] text-zinc-400 uppercase">Created</p>
+                    <p className="text-sm font-black text-zinc-800">{drillChannel.created_count.toLocaleString()}</p>
+                  </div>
+                  <div className="rounded bg-emerald-50 px-2 py-1.5 text-center border border-emerald-100">
+                    <p className="text-[9px] text-zinc-400 uppercase">Published</p>
+                    <p className="text-sm font-black text-emerald-600">{drillChannel.published_count.toLocaleString()}</p>
+                  </div>
+                  <div className={`rounded px-2 py-1.5 text-center border ${drillChannel.publish_rate >= 50 ? "bg-emerald-50 border-emerald-100" : "bg-rose-50 border-rose-100"}`}>
+                    <p className="text-[9px] text-zinc-400 uppercase">Pub Rate</p>
+                    <p className={`text-sm font-black ${drillChannel.publish_rate >= 50 ? "text-emerald-600" : "text-rose-500"}`}>{drillChannel.publish_rate}%</p>
+                  </div>
+                </div>
+                <p className="text-[9px] text-zinc-400">
+                  {drillChannel.published_count < drillChannel.created_count
+                    ? `${(drillChannel.created_count - drillChannel.published_count).toLocaleString()} videos processed but not yet published`
+                    : "All processed videos have been published"}
+                </p>
+                {showRaw ? (
+                  <DrillRawTable
+                    filters={{ channel_name: drillChannel.channel_name, client_id: drillChannel.client_id }}
+                    title={`Raw records — ${drillChannel.channel_name}`}
+                    onClose={() => setShowRaw(false)}
+                  />
+                ) : (
+                  <button type="button" onClick={() => setShowRaw(true)} className="w-full rounded-lg border border-dashed border-zinc-200 py-2 text-[10px] font-semibold text-zinc-400 hover:border-red-300 hover:text-red-500 transition-colors">
+                    🔍 View raw video records for this channel
+                  </button>
+                )}
+              </div>
+            ) : (
+              /* ── L2: Channels ranked ── */
+              <>
+                <p className="text-[9px] text-zinc-400 mb-1">Click a channel to drill deeper →</p>
+                <div className="space-y-1">
+                  {clientChannels.map((ch) => {
+                    const isSelected = ch.channel_name === selectedPoint.channel_name;
+                    return (
+                      <button
+                        key={ch.channel_name}
+                        type="button"
+                        onClick={() => setDrillChannel(ch)}
+                        className={`w-full flex items-center gap-2 rounded px-2 py-1.5 text-left transition-colors hover:bg-red-50 ${isSelected ? "bg-red-50 border border-red-100" : "bg-zinc-50"}`}
+                      >
+                        <span className={`w-28 truncate text-[10px] font-medium ${isSelected ? "text-red-700 font-bold" : "text-zinc-700"}`}>{ch.channel_name}</span>
+                        <div className="flex-1 h-3 bg-zinc-100 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${(ch.published_count / maxPublished) * 100}%`, backgroundColor: rateColor(ch.publish_rate) }} />
+                        </div>
+                        <span className="w-12 text-right text-[10px] font-bold" style={{ color: rateColor(ch.publish_rate) }}>{ch.publish_rate}%</span>
+                        <span className="w-16 text-right text-[10px] text-zinc-500">{ch.published_count.toLocaleString()} pub</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
-          <p>
-            {selectedPoint.client_id} / {selectedPoint.channel_name}: created{" "}
-            {selectedPoint.created_count.toLocaleString()}, published{" "}
-            {selectedPoint.published_count.toLocaleString()} ({selectedPoint.publish_rate}%)
-          </p>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
@@ -1019,23 +1095,61 @@ export function PlatformStackedChart({
           </BarChart>
         </ResponsiveContainer>
       </div>
-      {selectedSegment && (
-        <div className="mt-2 rounded-lg border border-zinc-200 bg-white p-2.5 text-xs text-zinc-700">
-          <div className="mb-1 flex items-center justify-between">
-            <p className="font-semibold text-zinc-900">Selected Segment</p>
-            <button
-              type="button"
-              onClick={() => setSelectedSegment(null)}
-              className="rounded border border-zinc-200 px-2 py-0.5 text-[10px] font-semibold text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
-            >
-              Close
-            </button>
+      {selectedSegment && (() => {
+        const origRow = data.find((r) => String(r.platform) === selectedSegment.platform);
+        const pctRow = pctData.find((r) => String(r.platform) === selectedSegment.platform);
+        const absValue = origRow ? Number(origRow[selectedSegment.outputType] ?? 0) : 0;
+        const total = pctRow ? Number(pctRow._total ?? 0) : 0;
+        const crossPlatform = data
+          .map((row) => {
+            const p = pctData.find((pd) => String(pd.platform) === String(row.platform));
+            return {
+              platform: String(row.platform),
+              value: Number(row[selectedSegment.outputType] ?? 0),
+              pct: p ? Number(p[selectedSegment.outputType] ?? 0) : 0,
+            };
+          })
+          .filter((p) => p.value > 0)
+          .sort((a, b) => b.value - a.value);
+        const maxCross = crossPlatform[0]?.value || 1;
+        return (
+          <div className="mt-2 rounded-lg border border-zinc-200 bg-white p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-zinc-900">{selectedSegment.outputType} on {selectedSegment.platform}</p>
+                <p className="text-[10px] text-zinc-500">
+                  {absValue.toLocaleString()} videos · {selectedSegment.value.toFixed(1)}% of {total.toLocaleString()} on this platform
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedSegment(null)}
+                className="rounded border border-zinc-200 px-2 py-0.5 text-[10px] font-semibold text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
+              >
+                Close
+              </button>
+            </div>
+            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+              {selectedSegment.outputType} across all platforms
+            </p>
+            <div className="space-y-1">
+              {crossPlatform.map((p, i) => {
+                const isSelected = p.platform === selectedSegment.platform;
+                return (
+                  <div key={p.platform} className={`flex items-center gap-2 rounded px-2 py-1 ${isSelected ? "bg-red-50" : "bg-zinc-50"}`}>
+                    <span className={`w-20 truncate text-[10px] font-medium ${isSelected ? "text-red-700 font-bold" : "text-zinc-700"}`}>{p.platform}</span>
+                    <div className="flex-1 h-2.5 bg-zinc-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full bg-red-400" style={{ width: `${(p.value / maxCross) * 100}%` }} />
+                    </div>
+                    <span className="w-14 text-right text-[10px] font-bold text-zinc-700">{p.value.toLocaleString()}</span>
+                    <span className="w-10 text-right text-[10px] text-zinc-400">{p.pct.toFixed(0)}%</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <p>
-            {selectedSegment.platform} / {selectedSegment.outputType}: {selectedSegment.value.toFixed(1)}%
-          </p>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
@@ -1120,23 +1234,67 @@ export function VelocityChart({ data }: { data: VelocityRow[] }) {
         </span>
         <span>Hover for full distribution</span>
       </div>
-      {selectedGroup && (
-        <div className="mt-2 rounded-lg border border-zinc-200 bg-white p-2.5 text-xs text-zinc-700">
-          <div className="mb-1 flex items-center justify-between">
-            <p className="font-semibold text-zinc-900">{selectedGroup.group_name} details</p>
-            <button
-              type="button"
-              onClick={() => setSelectedGroup(null)}
-              className="rounded border border-zinc-200 px-2 py-0.5 text-[10px] font-semibold text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
-            >
-              Close
-            </button>
+      {selectedGroup && (() => {
+        const sortedByAvg = [...data].sort((a, b) => a.avg_hours - b.avg_hours);
+        const rank = sortedByAvg.findIndex((d) => d.group_name === selectedGroup.group_name) + 1;
+        const maxAvg = sortedByAvg[sortedByAvg.length - 1]?.avg_hours || 1;
+        const safeMax = selectedGroup.max_hours || 0.01;
+        return (
+          <div className="mt-2 rounded-lg border border-zinc-200 bg-white p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-zinc-900">{selectedGroup.group_name}</p>
+                <p className="text-[10px] text-zinc-500">#{rank} fastest of {data.length} platforms</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedGroup(null)}
+                className="rounded border border-zinc-200 px-2 py-0.5 text-[10px] font-semibold text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
+              >
+                Close
+              </button>
+            </div>
+            <div className="mb-2 flex items-center gap-2">
+              <span className="text-[9px] text-zinc-400 w-6">0h</span>
+              <div className="flex-1 relative h-5 bg-zinc-100 rounded-full overflow-hidden">
+                <div
+                  className="absolute inset-y-0 rounded-full bg-red-300/60"
+                  style={{
+                    left: `${(selectedGroup.q1_hours / safeMax) * 100}%`,
+                    width: `${((selectedGroup.q3_hours - selectedGroup.q1_hours) / safeMax) * 100}%`,
+                  }}
+                />
+                <div className="absolute inset-y-0 w-0.5 bg-red-600" style={{ left: `${(selectedGroup.median_hours / safeMax) * 100}%` }} />
+                <div className="absolute inset-y-0 w-0.5 bg-orange-400" style={{ left: `${(selectedGroup.avg_hours / safeMax) * 100}%` }} />
+              </div>
+              <span className="text-[9px] text-zinc-400 w-10">{selectedGroup.max_hours}h</span>
+            </div>
+            <div className="flex gap-3 flex-wrap text-[10px] text-zinc-500 mb-3">
+              <span>Min <strong className="text-zinc-800">{selectedGroup.min_hours}h</strong></span>
+              <span>Q1 <strong className="text-zinc-800">{selectedGroup.q1_hours}h</strong></span>
+              <span>Median <strong className="text-red-600">{selectedGroup.median_hours}h</strong></span>
+              <span>Q3 <strong className="text-zinc-800">{selectedGroup.q3_hours}h</strong></span>
+              <span>Max <strong className="text-zinc-800">{selectedGroup.max_hours}h</strong></span>
+              <span>Avg <strong className="text-orange-500">{selectedGroup.avg_hours}h</strong></span>
+            </div>
+            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">Avg turnaround — all platforms</p>
+            <div className="space-y-1">
+              {sortedByAvg.map((g) => {
+                const isSelected = g.group_name === selectedGroup.group_name;
+                return (
+                  <div key={g.group_name} className={`flex items-center gap-2 rounded px-2 py-1 ${isSelected ? "bg-red-50" : ""}`}>
+                    <span className={`w-24 truncate text-[10px] font-medium ${isSelected ? "text-red-700 font-bold" : "text-zinc-700"}`}>{g.group_name}</span>
+                    <div className="flex-1 h-2 bg-zinc-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full bg-red-400" style={{ width: `${(g.avg_hours / maxAvg) * 100}%` }} />
+                    </div>
+                    <span className="w-12 text-right text-[10px] font-bold text-zinc-700">{g.avg_hours}h</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <p>
-            Min {selectedGroup.min_hours}h, Q1 {selectedGroup.q1_hours}h, median {selectedGroup.median_hours}h, Q3 {selectedGroup.q3_hours}h, max {selectedGroup.max_hours}h.
-          </p>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

@@ -11,6 +11,7 @@ const nav = [
   { href: "/dashboard/page3", label: "Channels" },
   { href: "/dashboard/page4", label: "Content Mix" },
   { href: "/dashboard/page5", label: "Explorer" },
+  { href: "/dashboard/page6", label: "Custom Widgets" },
 ];
 
 export default function DashboardLayout({

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "rag:sync": "curl -X POST http://localhost:3000/api/rag/sync"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

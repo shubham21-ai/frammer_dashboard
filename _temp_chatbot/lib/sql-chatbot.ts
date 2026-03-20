@@ -11,8 +11,6 @@ export function inferChartType(
   firstCol: string
 ): "line" | "bar" | "pie" | "funnel" | "table" {
   if (rows.length === 0) return "table";
-  // Single-row results (scalars, single values) are not chart-worthy — show as table
-  if (rows.length === 1) return "table";
   const hasDate = /date|time|month|year|day/i.test(firstCol) || columns.some((c) => /month|date|time|year/i.test(c));
   const numCols = columns.filter((c) => {
     const v = rows[0]?.[c];
@@ -24,42 +22,12 @@ export function inferChartType(
   return "table";
 }
 
-/** Serialize cell for JSON/chart; prevents [object Object] for pg interval etc. */
-function serializeCell(v: unknown): string | number {
-  if (v == null) return "";
-  if (typeof v === "object") {
-    const o = v as Record<string, unknown>;
-    if (typeof (o as { toPostgres?: unknown }).toPostgres === "function") {
-      return String((o as { toPostgres: () => unknown }).toPostgres());
-    }
-    if (
-      typeof o.hours === "number" ||
-      typeof o.minutes === "number" ||
-      typeof o.milliseconds === "number" ||
-      typeof o.seconds === "number" ||
-      typeof o.days === "number"
-    ) {
-      const h = Number(o.hours ?? 0) + Number(o.days ?? 0) * 24;
-      const m = Number(o.minutes ?? 0);
-      const s =
-        o.seconds != null
-          ? Math.floor(Number(o.seconds))
-          : Math.floor(Number(o.milliseconds ?? 0) / 1000);
-      return [h, m, s].map((n) => String(Math.floor(n)).padStart(2, "0")).join(":");
-    }
-    return JSON.stringify(v);
-  }
-  return typeof v === "number" ? v : String(v);
-}
-
 export function buildChartSpec(
   columns: string[],
   rows: Record<string, unknown>[],
   chartType: "line" | "bar" | "pie" | "funnel" | "table"
 ): Record<string, unknown> {
-  const labels = columns[0]
-    ? rows.map((r) => String(serializeCell(r[columns[0]])))
-    : [];
+  const labels = columns[0] ? rows.map((r) => String(r[columns[0]] ?? "")) : [];
   const dataCols = columns.slice(1).filter((c) => {
     const v = rows[0]?.[c];
     return typeof v === "number" || (typeof v === "string" && !isNaN(Number(v)));
@@ -96,7 +64,7 @@ export function buildChartSpec(
   return {
     type: "table",
     columns,
-    rows: rows.map((r) => columns.map((c) => serializeCell(r[c]))),
+    rows: rows.map((r) => columns.map((c) => r[c])),
   };
 }
 
@@ -114,7 +82,7 @@ function parseInsightsJson(text: string): string[] {
   try {
     const parsed = JSON.parse(cleaned);
     if (Array.isArray(parsed)) {
-      return parsed.map((x) => cleanInsightText(typeof x === "string" ? x : String(x)));
+      return parsed.map((x) => (typeof x === "string" ? x : String(x)));
     }
   } catch {
     /* continue */
@@ -125,7 +93,7 @@ function parseInsightsJson(text: string): string[] {
     try {
       const parsed = JSON.parse(arrayMatch[0]);
       if (Array.isArray(parsed)) {
-        return parsed.map((x) => cleanInsightText(typeof x === "string" ? x : String(x)));
+        return parsed.map((x) => (typeof x === "string" ? x : String(x)));
       }
     } catch {
       /* continue */
@@ -133,17 +101,7 @@ function parseInsightsJson(text: string): string[] {
   }
   // Fallback: split by newlines/bullets, treat each line as an insight
   const lines = cleaned.split(/\n+/).map((s) => s.replace(/^[-*•]\s*/, "").replace(/^`+|\s*`+$/g, "").trim()).filter(Boolean);
-  const result = lines.length > 0 ? lines : (cleaned ? [cleaned] : []);
-  return result.map(cleanInsightText);
-}
-
-/** Strip markdown only; do not truncate LLM output */
-function cleanInsightText(s: string): string {
-  return String(s)
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\*([^*]+)\*/g, "$1")
-    .trim();
+  return lines.length > 0 ? lines : (cleaned ? [cleaned] : []);
 }
 
 export async function generateInsights(
@@ -163,15 +121,17 @@ SQL: ${sql}
 Result rows (sample of ${rows.length} total):
 ${sample.join("\n")}
 
-Write 3-4 bullet-point insights. Each insight should be 2-3 sentences explaining what the data means and what to do next.
-- Plain text only: NO markdown (**bold**), NO backticks, NO code.
-- Be substantive: explain context, implications, and recommendations.
-Return ONLY a JSON array of strings. No other text.`;
+Write 3-4 short bullet-point insights that EXPLAIN THE TABLE DATA:
+- What do the numbers/values mean?
+- What patterns or trends do you see?
+- What should the user take away from this data?
+
+Do NOT explain the SQL query itself. Focus on interpreting the results.
+Return ONLY a JSON array of strings, e.g. ["Insight 1", "Insight 2"]. No markdown, no code blocks, no other text.`;
   const result = await model.generateContent(prompt);
   const text = result.response.text();
   const parsed = parseInsightsJson(text);
-  const insights = parsed.length > 0 ? parsed : [cleanInsightText(text)];
-  return insights.slice(0, 4); // cap at 4 to avoid walls of text
+  return parsed.length > 0 ? parsed : [text];
 }
 
 /** @deprecated Use chatWithSQL from lib/sql-agent.ts with LangChain memory */

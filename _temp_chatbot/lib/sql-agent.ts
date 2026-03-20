@@ -39,54 +39,14 @@ General SQL rules:
 4. Return ONLY the SQL query. No markdown or explanation.
 `;
 
-const HISTORY_MAX_PAIRS = 3;
-
-/** LLM classifier: is this question analytics/dashboard related? Uses last 3 pairs of history for context. */
-export async function classifyAsAnalytics(
-  question: string,
-  apiKey: string,
-  sessionId: string
-): Promise<boolean> {
-  const model = new ChatGoogleGenerativeAI({
-    model: "gemini-2.5-flash",
-    apiKey,
-  });
-  const history = getOrCreateHistory(sessionId);
-  const historyMessages = await history.getMessages();
-  const historyBlock =
-    historyMessages.length > 0
-      ? `\n\nRecent conversation (last 3 pairs):\n${historyMessages
-          .map((m, i) => {
-            const role = i % 2 === 0 ? "User" : "Assistant";
-            const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
-            return `${role}: ${content.slice(0, 300)}${content.length > 300 ? "..." : ""}`;
-          })
-          .join("\n")}\n`
-      : "";
-
-  const prompt = `You are a classifier. Does this user question require a NEW database query to fetch analytics data?
-
-Answer YES only if the user wants NEW data (e.g. "show me X", "how many Y", "plot Z", "what about channels?").
-Answer NO if the user only wants interpretation of the PREVIOUS response—e.g. "what is the actionable insight", "summarize the above", "what does this mean", "explain that", "so what should I do". Those are answered from chat history, not the database.
-
-${historyBlock}
-Current question: "${question}"
-
-Answer with exactly one word: YES or NO`;
-  const response = await model.invoke([new HumanMessage(prompt)]);
-  const text = (response.content as string).trim().toUpperCase();
-  return text.startsWith("YES");
-}
-
 /** System prompt for answering non-database questions purely from chat history */
 const HISTORY_PROMPT = `
 You are a helpful assistant that can ONLY use the existing chat history for context.
 
 Rules:
-- Answer using ONLY information from previous messages. Do NOT invent data.
-- Respond in a SINGLE short paragraph (2-4 sentences). Do NOT use bullet points or numbered lists.
-- Plain text only: NO markdown (**bold**), NO backticks, NO code.
-- If the user asks about something not in history, say you don't know and suggest a concrete analytics question.
+- Answer the user's question using ONLY the information contained in the previous messages.
+- Do NOT invent or assume new analytics data or database details that were not mentioned before.
+- If the user asks about something that is not present in the chat history, clearly say you don't know based on the current conversation and suggest they ask a concrete analytics question instead.
 `;
 
 /** LangChain-style in-memory chat history per session */
@@ -99,28 +59,17 @@ type SessionHistory = {
 
 const sessionStore = new Map<string, SessionHistory>();
 
-function trimToLastNPairs(messages: BaseMessage[], n: number): void {
-  const maxMessages = n * 2; // n pairs = n user + n assistant
-  if (messages.length > maxMessages) {
-    messages.splice(0, messages.length - maxMessages);
-  }
-}
-
 function getOrCreateHistory(sessionId: string): SessionHistory {
   let history = sessionStore.get(sessionId);
   if (!history) {
     const messages: BaseMessage[] = [];
     history = {
-      getMessages: async () => {
-        trimToLastNPairs(messages, HISTORY_MAX_PAIRS);
-        return [...messages];
-      },
+      getMessages: async () => [...messages],
       addUserMessage: async (content) => {
         messages.push(new HumanMessage(content));
       },
       addAIMessage: async (content) => {
         messages.push(new AIMessage(content));
-        trimToLastNPairs(messages, HISTORY_MAX_PAIRS);
       },
       clear: async () => {
         messages.length = 0;
@@ -149,8 +98,7 @@ export async function chatWithSQL(
     buildChartSpec: (cols: string[], rows: Record<string, unknown>[], ct: "line" | "bar" | "pie" | "funnel" | "table") => Record<string, unknown>;
     generateInsights: (q: string, sql: string, rows: Record<string, unknown>[], key: string) => Promise<string[]>;
   },
-  ragContext?: string,
-  pageContext?: string
+  ragContext?: string
 ): Promise<{
   sql: string;
   rows: Record<string, unknown>[];
@@ -160,7 +108,7 @@ export async function chatWithSQL(
   error?: string;
 }> {
   const model = new ChatGoogleGenerativeAI({
-    model: "gemini-2.5-flash",
+    model: "gemini-3-flash-preview",
     apiKey,
   });
 
@@ -172,12 +120,9 @@ export async function chatWithSQL(
   const ragBlock = ragContext
     ? `\n\nRelevant dashboard context (use to inform your answer; data may be approximate):\n${ragContext}\n`
     : "";
-  const pageBlock = pageContext
-    ? `\nUser is currently viewing: ${pageContext}\n`
-    : "";
   const userContent = `Schema (you MUST use these tables):
 ${schemaText}
-${pageBlock}${ragBlock}
+${ragBlock}
 Question: ${question}`;
 
   const messages = [

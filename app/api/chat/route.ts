@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { chatWithSQL, clearSessionMemory, answerFromHistory } from "@/lib/sql-agent";
+import { chatWithSQL, clearSessionMemory, answerFromHistory, classifyAsAnalytics } from "@/lib/sql-agent";
 import { inferChartType, buildChartSpec, generateInsights } from "@/lib/sql-chatbot";
 import { query } from "@/lib/db";
-import { DASHBOARD_KPI_DEFINITIONS, matchDashboardKpiId } from "@/lib/dashboard-knowledge";
+import { retrieve } from "@/lib/rag-store";
 
 async function fetchSchema() {
   const { rows } = await query<{
@@ -28,28 +28,14 @@ async function fetchSchema() {
   return schema;
 }
 
-function looksLikeAnalyticsQuestion(q: string): boolean {
-  const analyticsKeywords =
-    /\b(video|videos|channel|channels|publish|published|views|view|watch|impressions?|clicks?|ctr|conversion|conversions|funnel|platforms?|client|clients|table|tables|schema|database|db|data|analytics|performance|trend|trends|growth|velocity|kpi|kpis|uploaded|upload|processed|created|duration|volume|count|factors?)\b|\bhow\s+many\b|\bhow\s+much\b|\bnumber\s+of\b/i;
-  return analyticsKeywords.test(q);
-}
-
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
-}
-
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { question, sessionId = "default" } = body as {
+    const { question, sessionId = "default", pageContext } = body as {
       question: string;
       sessionId?: string;
       clearMemory?: boolean;
+      pageContext?: string;
     };
 
     if (!question || typeof question !== "string") {
@@ -72,66 +58,24 @@ export async function POST(req: NextRequest) {
       clearSessionMemory(sessionId);
     }
 
-    // Fast-path: "explain KPI <x>" should return definition + current computed value.
-    // This avoids the history-only fallback which happens when the question isn't
-    // detected as an analytics query.
-    const kpiId = matchDashboardKpiId(trimmed);
-    const wantsDefinition =
-      /\b(explain|definition|what is|what's|meaning|describe)\b/i.test(trimmed) || /\btotal uploaded volume\b/i.test(trimmed);
-    const wantsKpiValue = /\b(current|latest|now|today|value|number|count|hours)\b/i.test(trimmed);
+    // ─── Gate: LLM classifies analytics vs general conversation ────────────
+    const isDashboardOrAnalytics = await classifyAsAnalytics(trimmed, apiKey, sessionId);
 
-    if (kpiId && wantsDefinition) {
-      const kpi = DASHBOARD_KPI_DEFINITIONS[kpiId];
-
-      // For now, implement deterministic SQL for "Total Uploaded Volume"
-      // (alias-driven, extendable with more KPI definitions later).
-      const totalUploadedCountRes = await query<{ total_uploaded: number }>(
-        `SELECT COALESCE(SUM(total_uploaded), 0)::int AS total_uploaded
-         FROM monthly_processing_summary`
-      );
-
-      const totalUploadedDurationSecRes = await query<{ total_seconds: number }>(
-        `SELECT COALESCE(SUM(
-            CASE
-              WHEN total_uploaded_duration IS NOT NULL
-               AND TRIM(COALESCE(total_uploaded_duration::text, '')) != ''
-              THEN EXTRACT(EPOCH FROM (total_uploaded_duration::text::interval))
-              ELSE NULL
-            END
-          ), 0)::numeric AS total_seconds
-         FROM monthly_duration_summary`
-      );
-
-      const totalUploadedCount = Number(totalUploadedCountRes.rows[0]?.total_uploaded ?? 0);
-      const totalUploadedSeconds = Number(totalUploadedDurationSecRes.rows[0]?.total_seconds ?? 0);
-      const totalUploadedDurationFormatted = formatDuration(totalUploadedSeconds);
-
-      const valueLine = `Current value: ${totalUploadedCount.toLocaleString()} videos (${totalUploadedDurationFormatted} uploaded).`;
-
-      return NextResponse.json({
-        sql_query: "",
-        table_data: [],
-        chart_spec: { type: "table" },
-        insights: wantsKpiValue
-          ? [kpi.definition, valueLine]
-          : [
-              kpi.definition,
-              // Still include computed value by default for option (2).
-              valueLine,
-            ],
-      });
-    }
-
-    // If it doesn't look like a database/analytics question, answer purely from chat history
-    if (!looksLikeAnalyticsQuestion(trimmed)) {
+    if (!isDashboardOrAnalytics) {
       const historyAnswer = await answerFromHistory(trimmed, sessionId, apiKey);
+      // Non-analytics: return as single paragraph (one insight)
+      const insights = historyAnswer
+        ? [historyAnswer.replace(/\n+/g, " ").trim()]
+        : [];
       return NextResponse.json({
         sql_query: "",
         table_data: [],
         chart_spec: { type: "table" },
-        insights: historyAnswer ? [historyAnswer] : [],
+        insights,
       });
     }
+
+    // ─── Analytics path: RAG + SQL agent ───────────────────────────────────
 
     const fullSchema = await fetchSchema();
 
@@ -142,13 +86,43 @@ export async function POST(req: NextRequest) {
       schema[tableName] = cols;
     }
 
-    const result = await chatWithSQL(trimmed, schema, sessionId, apiKey, {
-      inferChartType,
-      buildChartSpec,
-      generateInsights,
-    });
+    // RAG: retrieve relevant dashboard context (optional; falls back if RAG unavailable)
+    let ragContext: string | undefined;
+    try {
+      const chunks = await retrieve(trimmed, apiKey, 5);
+      if (chunks.length > 0) {
+        ragContext = chunks.map((c) => c.content).join("\n---\n");
+      }
+    } catch {
+      /* RAG optional; continue without context */
+    }
+
+    const result = await chatWithSQL(
+      trimmed,
+      schema,
+      sessionId,
+      apiKey,
+      { inferChartType, buildChartSpec, generateInsights },
+      ragContext,
+      pageContext
+    );
 
     if (result.error && result.rows.length === 0) {
+      // Fallback: interpretation questions ("actionable insight", "summarize above") may be misrouted
+      // to analytics path; when SQL can't help, answer from history instead
+      const isInterpretationQuestion = /\b(actionable\s+insight|insight\s+from|summarize|above\s+information|what\s+does\s+this\s+mean)\b/i.test(trimmed);
+      if (isInterpretationQuestion && result.error?.includes("Data not available")) {
+        const historyAnswer = await answerFromHistory(trimmed, sessionId, apiKey);
+        const insights = historyAnswer
+          ? [historyAnswer.replace(/\n+/g, " ").trim()]
+          : [];
+        return NextResponse.json({
+          sql_query: "",
+          table_data: [],
+          chart_spec: { type: "table" },
+          insights,
+        });
+      }
       return NextResponse.json({
         sql_query: result.sql,
         table_data: [],

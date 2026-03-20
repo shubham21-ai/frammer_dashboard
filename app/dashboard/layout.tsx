@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import SQLChatbot from "@/components/SQLChatbot";
+import dynamic from "next/dynamic";
+
+const ChatPanel = dynamic(() => import("@/components/ChatPanel"), { ssr: false });
 
 const nav = [
   { href: "/dashboard/page1", label: "Overview" },
@@ -13,6 +15,14 @@ const nav = [
   { href: "/dashboard/page5", label: "Explorer" },
 ];
 
+const PAGE_LABELS: Record<string, string> = {
+  "/dashboard/page1": "CEO Overview",
+  "/dashboard/page2": "Analysis & Funnel",
+  "/dashboard/page3": "Channels",
+  "/dashboard/page4": "Content Mix",
+  "/dashboard/page5": "Data Explorer",
+};
+
 export default function DashboardLayout({
   children,
 }: {
@@ -20,6 +30,7 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const [chatOpen, setChatOpen] = useState(false);
+  const pageContext = PAGE_LABELS[pathname] ?? "Dashboard";
 
   return (
     <div className="min-h-screen bg-white">
@@ -58,21 +69,27 @@ export default function DashboardLayout({
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setChatOpen(true)}
-              className="text-xs font-medium text-gray-700 bg-red-50 border border-red-200 px-2 sm:px-3 py-1.5 rounded-lg hover:border-red-300 hover:bg-red-100 transition-colors flex items-center gap-1.5"
-              title="Ask questions about your data"
+              onClick={() => setChatOpen((v) => !v)}
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 bg-gray-50 border border-gray-200 hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-all"
+              aria-label="Open AI assistant"
             >
-              <svg className="h-3.5 w-3.5 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+              <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round"
+                  d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-4 4-4-4z" />
               </svg>
-              <span className="hidden sm:inline">AI Data Chat</span>
+              <span className="hidden sm:inline">Ask AI</span>
             </button>
           </div>
         </div>
       </header>
 
       <main>{children}</main>
-      <SQLChatbot open={chatOpen} onClose={() => setChatOpen(false)} />
+
+      <ChatPanel
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        pageContext={pageContext}
+      />
     </div>
   );
 }

@@ -72,7 +72,7 @@ SQL rules:
 - Use the exact table and column names from the schema above.`;
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 
   let text: string;
   try {
@@ -147,7 +147,7 @@ SQL rules:
         parsed.widget_type as "bar" | "line" | "pie" | "table"
       )
         ? (parsed.widget_type as "bar" | "line" | "pie" | "table")
-        : inferChartType(columns, typedRows, columns[0] ?? "");
+        : inferChartType(columns, typedRows, columns[0] ?? "", prompt);
 
       chartSpec = buildChartSpec(columns, typedRows, validType);
       chartSpec.type = parsed.widget_type;

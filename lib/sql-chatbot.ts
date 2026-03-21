@@ -8,19 +8,23 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 export function inferChartType(
   columns: string[],
   rows: Record<string, unknown>[],
-  firstCol: string
+  firstCol: string,
+  question?: string
 ): "line" | "bar" | "pie" | "funnel" | "table" {
   if (rows.length === 0) return "table";
   // Single-row results (scalars, single values) are not chart-worthy — show as table
   if (rows.length === 1) return "table";
+  const asksPie = /\b(pie|donut|doughnut)\b/i.test(question ?? "");
   const hasDate = /date|time|month|year|day/i.test(firstCol) || columns.some((c) => /month|date|time|year/i.test(c));
   const numCols = columns.filter((c) => {
     const v = rows[0]?.[c];
     return typeof v === "number" || (typeof v === "string" && !isNaN(Number(v)));
   });
+  // Honor explicit user intent for pie when shape is label + value.
+  if (asksPie && columns.length >= 2 && numCols.length === 1) return "pie";
   if (hasDate && numCols.length >= 1) return "line";
+  if (rows.length <= 12 && columns.length === 2 && numCols.length === 1) return "pie";
   if (rows.length <= 10 && numCols.length >= 1) return "bar";
-  if (rows.length <= 10 && columns.length === 2 && numCols.length === 1) return "pie";
   return "table";
 }
 
@@ -84,6 +88,10 @@ function monthNumber(label: string): number | null {
   return map[normalized] ?? null;
 }
 
+function isTemporalColumnName(col: string): boolean {
+  return /date|time|month|year|day|week|quarter/i.test(col);
+}
+
 function sortLabelsChronologicallyIfMonths(labels: string[]): string[] {
   const monthPairs = labels.map((label) => ({ label, month: monthNumber(label) }));
   if (monthPairs.every((p) => p.month != null)) {
@@ -105,18 +113,23 @@ export function buildChartSpec(
     : [];
   const dataCols = columns.slice(1).filter((c) => isNumericColumn(c, rows));
 
-  // Long format pivot support: [x, series, value] -> labels + datasets per series
-  if ((chartType === "line" || chartType === "bar") && labelCol && columns.length >= 3 && dataCols.length === 1) {
+  // Long format pivot support: [x, series, value] -> labels + datasets per series.
+  // Also handles reversed order (e.g. [series, x, value]) by inferring x/series columns.
+  if ((chartType === "line" || chartType === "bar") && columns.length >= 3 && dataCols.length === 1) {
     const valueCol = dataCols[0];
-    const seriesCol = columns.slice(1).find((c) => c !== valueCol && !isNumericColumn(c, rows));
+    const nonNumericCols = columns.filter((c) => c !== valueCol && !isNumericColumn(c, rows));
+    const inferredXCol =
+      nonNumericCols.find((c) => isTemporalColumnName(c))
+      ?? (labelCol && nonNumericCols.includes(labelCol) ? labelCol : nonNumericCols[0]);
+    const seriesCol = nonNumericCols.find((c) => c !== inferredXCol);
 
-    if (seriesCol) {
+    if (inferredXCol && seriesCol) {
       const xSeen = new Set<string>();
       const seriesSeen = new Set<string>();
       const pivot = new Map<string, Map<string, number>>();
 
       for (const row of rows) {
-        const x = String(serializeCell(row[labelCol]));
+        const x = String(serializeCell(row[inferredXCol]));
         const series = String(serializeCell(row[seriesCol]));
         const raw = row[valueCol];
         const value = typeof raw === "number" ? raw : Number(raw) || 0;

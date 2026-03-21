@@ -145,7 +145,7 @@ export async function chatWithSQL(
   sessionId: string,
   apiKey: string,
   helpers: {
-    inferChartType: (cols: string[], rows: Record<string, unknown>[], first: string) => "line" | "bar" | "pie" | "funnel" | "table";
+    inferChartType: (cols: string[], rows: Record<string, unknown>[], first: string, question?: string) => "line" | "bar" | "pie" | "funnel" | "table";
     buildChartSpec: (cols: string[], rows: Record<string, unknown>[], ct: "line" | "bar" | "pie" | "funnel" | "table") => Record<string, unknown>;
     generateInsights: (q: string, sql: string, rows: Record<string, unknown>[], key: string) => Promise<string[]>;
   },
@@ -224,7 +224,7 @@ Question: ${question}`;
     const { rows } = await query<Record<string, unknown>>(sql);
     const table_data = rows.map((r) => ({ ...r }));
     const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
-    const chartType = helpers.inferChartType(columns, rows, columns[0] || "");
+    const chartType = helpers.inferChartType(columns, rows, columns[0] || "", question);
     const chart_spec = helpers.buildChartSpec(columns, rows, chartType);
     const insights =
       rows.length > 0 ? await helpers.generateInsights(question, sql, rows, apiKey) : [];

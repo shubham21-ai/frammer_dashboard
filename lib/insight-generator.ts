@@ -7,7 +7,7 @@ type InsightContext = {
   data: Record<string, unknown>;
 };
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-pro";
 
 function compact(value: unknown, depth = 0): unknown {
   if (depth > 3) return value;

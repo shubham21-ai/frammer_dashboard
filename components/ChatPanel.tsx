@@ -9,6 +9,8 @@ const MIN_WIDTH = 420;
 const MIN_HEIGHT = 400;
 const DEFAULT_WIDTH = 560;
 const DEFAULT_HEIGHT = 640;
+const RETRY_DELAY_MS = 2500;
+const GENERATION_FAILED_MESSAGE = "Generation failed. Please retry with the same prompt or try rephrasing it.";
 
 type ChatMessage = {
   id: string;
@@ -220,6 +222,23 @@ function ChatChart({ spec }: { spec: Record<string, unknown> }) {
   return null;
 }
 
+function shouldRetryChatError(data: unknown): boolean {
+  if (!data || typeof data !== "object") return false;
+  const payload = data as Record<string, unknown>;
+  const error = typeof payload.error === "string" ? payload.error : "";
+  const sql = typeof payload.sql_query === "string" ? payload.sql_query.trim() : "";
+  if (!error || !sql) return false;
+  return /syntax|invalid|operator|column|relation|function|type|query|sql/i.test(error);
+}
+
+function toFriendlyErrorMessage(data: unknown): string {
+  if (!data || typeof data !== "object") return "Request failed";
+  const payload = data as Record<string, unknown>;
+  if (shouldRetryChatError(payload)) return GENERATION_FAILED_MESSAGE;
+  const error = typeof payload.error === "string" ? payload.error : "";
+  return error || "Request failed";
+}
+
 
 // ─── Main component ────────────────────────────────────────────────────────────
 
@@ -402,12 +421,21 @@ export default function ChatPanel({ open, onClose, pageContext, userId }: ChatPa
     );
 
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q, sessionId: activeId, pageContext }),
-      });
-      const data = await res.json();
+      const requestBody = { question: q, sessionId: activeId, pageContext };
+      const makeRequest = async () => {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        });
+        return res.json();
+      };
+
+      let data = await makeRequest();
+      if (shouldRetryChatError(data)) {
+        await new Promise((resolve) => window.setTimeout(resolve, RETRY_DELAY_MS));
+        data = await makeRequest();
+      }
 
       const assistantMsgId = crypto.randomUUID();
       const assistantMsg: ChatMessage = {
@@ -424,7 +452,7 @@ export default function ChatPanel({ open, onClose, pageContext, userId }: ChatPa
       );
 
       if (data.error) {
-        updateAssistantMessage(assistantMsgId, { error: data.error });
+        updateAssistantMessage(assistantMsgId, { error: toFriendlyErrorMessage(data) });
       } else {
         const insights = Array.isArray(data.insights) ? data.insights : [];
         const chartSpec =

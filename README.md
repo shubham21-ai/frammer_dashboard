@@ -1,4 +1,4 @@
-# JCB Data Dashboard
+# Frammer Dashboard
 
 AI-powered analytics dashboard built with Next.js 16, Supabase, and Google Gemini. Upload datasets, visualize processing summaries, chat with your data in natural language, and manage schema through the UI.
 

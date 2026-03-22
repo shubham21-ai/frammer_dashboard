@@ -148,18 +148,18 @@ async function main() {
   if (rpcErr) console.log("ℹ  exec_sql not available yet — skipping users table DDL");
 
   const tables = [
-    ["monthly_processing_summary",      "JCB_Data_Analytics_Extended_-_monthly_processing_summary.csv",      []],
-    ["monthly_duration_summary",         "JCB_Data_Analytics_Extended_-_monthly_duration_summary.csv",         []],
-    ["channel_processing_summary",       "JCB_Data_Analytics_Extended_-_channel_processing_summary.csv",       []],
-    ["channel_user_processing_summary",  "JCB_Data_Analytics_Extended_-_channel_user_processing_summary.csv",  []],
-    ["channel_wise_publishing_counts",   "JCB_Data_Analytics_Extended_-_channel_wise_publishing_counts.csv",   []],
-    ["channel_wise_publishing_duration", "JCB_Data_Analytics_Extended_-_channel_wise_publishing_duration.csv", []],
-    ["input_type_processing_summary",    "JCB_Data_Analytics_Extended_-_input_type_processing_summary.csv",    []],
-    ["language_processing_summary",      "JCB_Data_Analytics_Extended_-_language_processing_summary.csv",      []],
-    ["output_type_processing_summary",   "JCB_Data_Analytics_Extended_-_output_type_processing_summary.csv",   []],
-    ["user_processing_summary",          "JCB_Data_Analytics_Extended_-_user_processing_summary.csv",          []],
-    ["users",                            "JCB_Data_Analytics_Extended_-_user_ids.csv",                         []],
-    ["videos",                           "JCB_Data_Analytics_Extended_-_videos.csv",                           ["user_name"], "video_id"],
+    ["monthly_processing_summary",      "Data_Analytics_Extended_-_monthly_processing_summary.csv",      []],
+    ["monthly_duration_summary",         "Data_Analytics_Extended_-_monthly_duration_summary.csv",         []],
+    ["channel_processing_summary",       "Data_Analytics_Extended_-_channel_processing_summary.csv",       []],
+    ["channel_user_processing_summary",  "Data_Analytics_Extended_-_channel_user_processing_summary.csv",  []],
+    ["channel_wise_publishing_counts",   "Data_Analytics_Extended_-_channel_wise_publishing_counts.csv",   []],
+    ["channel_wise_publishing_duration", "Data_Analytics_Extended_-_channel_wise_publishing_duration.csv", []],
+    ["input_type_processing_summary",    "Data_Analytics_Extended_-_input_type_processing_summary.csv",    []],
+    ["language_processing_summary",      "Data_Analytics_Extended_-_language_processing_summary.csv",      []],
+    ["output_type_processing_summary",   "Data_Analytics_Extended_-_output_type_processing_summary.csv",   []],
+    ["user_processing_summary",          "Data_Analytics_Extended_-_user_processing_summary.csv",          []],
+    ["users",                            "Data_Analytics_Extended_-_user_ids.csv",                         []],
+    ["videos",                           "Data_Analytics_Extended_-_videos.csv",                           ["user_name"], "video_id"],
   ];
 
   for (const [table, file, skip, dedup] of tables) {

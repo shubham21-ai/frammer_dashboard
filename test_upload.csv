@@ -1,0 +1,21 @@
+client_id,channel_name,user_name,video_id,input_type_name,output_type_name,language_name,duration,uploaded_at,processed_at,published_at,published_flag,published_platform,published_url
+WAI,Marketing,Alice Johnson,1001,Raw Footage,Short Reel,English,00:02:30,2024-01-05,2024-01-06,2024-01-07,true,Instagram,https://instagram.com/p/abc1
+WAI,Marketing,Alice Johnson,1002,Raw Footage,YouTube Video,English,00:08:45,2024-01-08,2024-01-09,2024-01-10,true,YouTube,https://youtube.com/v/abc2
+WAI,Marketing,Bob Smith,1003,Script,Short Reel,Hindi,00:01:15,2024-01-10,2024-01-11,2024-01-12,true,Reels,https://instagram.com/reel/abc3
+WAI,Marketing,Bob Smith,1004,Raw Footage,LinkedIn Post,English,00:03:20,2024-01-12,2024-01-13,,false,,
+WAI,Social Media,Carol Davis,1005,Script,YouTube Video,English,00:12:00,2024-01-15,2024-01-16,2024-01-17,true,YouTube,https://youtube.com/v/abc5
+WAI,Social Media,Carol Davis,1006,Raw Footage,Short Reel,Tamil,00:00:58,2024-01-18,2024-01-19,2024-01-20,true,Instagram,https://instagram.com/p/abc6
+WAI,Social Media,David Lee,1007,Raw Footage,Facebook Video,English,00:05:10,2024-01-20,2024-01-21,2024-01-22,true,Facebook,https://facebook.com/v/abc7
+WAI,Social Media,David Lee,1008,Script,Short Reel,English,00:01:30,2024-01-22,2024-01-23,,false,,
+E3,Content,Emma Wilson,2001,Raw Footage,YouTube Video,English,00:10:22,2024-01-05,2024-01-07,2024-01-08,true,YouTube,https://youtube.com/v/bcd1
+E3,Content,Emma Wilson,2002,Raw Footage,Short Reel,English,00:00:45,2024-01-09,2024-01-10,2024-01-11,true,Reels,https://instagram.com/reel/bcd2
+E3,Content,Frank Brown,2003,Script,LinkedIn Post,English,00:04:00,2024-01-12,2024-01-13,2024-01-14,true,LinkedIn,https://linkedin.com/v/bcd3
+E3,Content,Frank Brown,2004,Raw Footage,YouTube Video,Hindi,00:09:15,2024-01-15,2024-01-16,,false,,
+E3,Production,Grace Kim,2005,Raw Footage,Short Reel,Tamil,00:01:05,2024-01-18,2024-01-19,2024-01-20,true,Instagram,https://instagram.com/p/bcd5
+E3,Production,Grace Kim,2006,Script,YouTube Video,English,00:15:30,2024-01-20,2024-01-22,2024-01-23,true,YouTube,https://youtube.com/v/bcd6
+E3,Production,Henry Park,2007,Raw Footage,Facebook Video,English,00:06:45,2024-01-23,2024-01-24,2024-01-25,true,Facebook,https://facebook.com/v/bcd7
+E3,Production,Henry Park,2008,Script,Short Reel,English,00:00:52,2024-01-25,2024-01-26,,false,,
+Al+,Brand,Iris Patel,3001,Raw Footage,YouTube Video,English,00:11:10,2024-02-01,2024-02-02,2024-02-03,true,YouTube,https://youtube.com/v/cde1
+Al+,Brand,Iris Patel,3002,Script,Short Reel,Hindi,00:01:20,2024-02-04,2024-02-05,2024-02-06,true,Reels,https://instagram.com/reel/cde2
+Al+,Brand,James Nguyen,3003,Raw Footage,LinkedIn Post,English,00:03:55,2024-02-07,2024-02-08,2024-02-09,true,LinkedIn,https://linkedin.com/v/cde3
+Al+,Digital,James Nguyen,3004,Raw Footage,YouTube Video,English,00:08:30,2024-02-10,2024-02-11,,false,,

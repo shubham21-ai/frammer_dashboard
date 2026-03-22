@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { query } from "@/lib/db";
+import { query, execDDL } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -95,9 +95,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ALTER TABLE - identifiers must be quoted if they could be reserved
+    // ALTER TABLE must go through execDDL (not query/exec_sql — DDL can't be a subquery)
     const sql = `ALTER TABLE "${table}" ADD COLUMN "${column}" ${dataType}`;
-    await query(sql);
+    await execDDL(sql);
 
     return NextResponse.json({
       success: true,

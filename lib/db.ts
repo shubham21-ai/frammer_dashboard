@@ -21,30 +21,28 @@ function substituteParams(text: string, params?: unknown[]): string {
   return result;
 }
 
+// query() is for SELECT statements only. exec_sql wraps everything as
+// SELECT * FROM (<sql>) t — DML and DDL cannot go through this path.
+// Use supabase.from().insert()/upsert()/delete() for DML directly.
 export async function query<T = unknown>(
   text: string,
   params?: unknown[]
 ): Promise<{ rows: T[]; rowCount: number | null }> {
   // exec_sql wraps SQL as `FROM (<sql>) t` — trailing semicolons break the outer query
   const sql = substituteParams(text, params).replace(/;\s*$/, "");
-
-  // Transaction control statements (BEGIN/COMMIT/ROLLBACK) are no-ops inside exec_sql
-  // (exec_sql already runs in its own transaction context)
-  if (/^\s*(BEGIN|COMMIT|ROLLBACK|SAVEPOINT)\b/i.test(sql)) {
-    return { rows: [], rowCount: 0 };
-  }
-
-  // exec_sql wraps the query as `SELECT * FROM (<sql>) t`.
-  // DML (INSERT/UPDATE/DELETE) without RETURNING fails in that form.
-  // Appending RETURNING * makes PostgreSQL allow it as a subquery.
-  const isDML = /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql);
-  const hasReturning = /\bRETURNING\b/i.test(sql);
-  const finalSql = isDML && !hasReturning ? `${sql} RETURNING *` : sql;
-
-  const { data, error } = await supabase.rpc("exec_sql", { query: finalSql });
+  const { data, error } = await supabase.rpc("exec_sql", { query: sql });
   if (error) throw new Error(error.message);
   const rows = (Array.isArray(data) ? data : []) as T[];
   return { rows, rowCount: rows.length };
+}
+
+// DDL statements (ALTER TABLE, CREATE TABLE, etc.) cannot go through exec_sql
+// because it wraps queries as FROM (<sql>) t — DDL has no RETURNING and is rejected.
+// Use exec_ddl (a separate RPC that runs EXECUTE directly) for schema changes.
+export async function execDDL(sql: string): Promise<void> {
+  const cleanSql = sql.replace(/;\s*$/, "");
+  const { error } = await supabase.rpc("exec_ddl", { sql: cleanSql });
+  if (error) throw new Error(error.message);
 }
 
 // Pool compatibility shim for routes that use pool.connect() / client.query() / client.release()
